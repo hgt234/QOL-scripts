@@ -41,7 +41,7 @@ param(
 # ============================================================================
 # CONFIGURATION - Update these values for your environment
 # ============================================================================
-
+##
 # Azure Key Vault
 $keyVaultName = "my-keyvault"
 
