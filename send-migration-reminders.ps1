@@ -69,159 +69,95 @@ $emailBodyTemplate = @"
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body {
-            font-family: 'Segoe UI', 'Arial', sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #e6ecf0;
-            color: #1a1a1a;
-        }
-        .container {
-            max-width: 650px;
-            margin: 30px auto;
-            background-color: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            overflow: hidden;
-        }
-        .header {
-            background: linear-gradient(135deg, #d83b01 0%, #ff6a00 100%);
-            padding: 40px 20px;
-            text-align: center;
-            color: #ffffff;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 28px;
-            font-weight: 600;
-            letter-spacing: 1px;
-        }
-        .content {
-            padding: 40px 30px;
-            line-height: 1.8;
-        }
-        .content h2 {
-            color: #d83b01;
-            font-size: 22px;
-            margin: 20px 0 10px;
-            font-weight: 600;
-            border-left: 4px solid #d83b01;
-            padding-left: 10px;
-        }
-        .content p {
-            font-size: 16px;
-            margin: 10px 0;
-        }
-        .content ul {
-            margin: 15px 0;
-            padding-left: 25px;
-        }
-        .content ul li {
-            margin-bottom: 12px;
-            font-size: 16px;
-        }
-        .warning-box {
-            background-color: #fff4ce;
-            padding: 20px;
-            margin: 20px 0;
-            border-left: 4px solid #d83b01;
-            border-radius: 4px;
-        }
-        .info-box {
-            background-color: #f0f6ff;
-            padding: 20px;
-            margin: 20px 0;
-            border-left: 4px solid #0078d4;
-            border-radius: 4px;
-        }
-        .deadline {
-            font-size: 20px;
-            font-weight: bold;
-            color: #d83b01;
-        }
-        .success {
-            color: #107c10;
-            font-weight: 600;
-        }
-        .footer {
-            background-color: #f8fafc;
-            padding: 20px;
-            text-align: center;
-            font-size: 14px;
-            color: #4a4a4a;
-            border-top: 1px solid #e0e0e0;
-        }
-        .footer p {
-            margin: 5px 0;
-        }
-        @media only screen and (max-width: 600px) {
-            .container {
-                margin: 10px;
-            }
-            .header h1 {
-                font-size: 24px;
-            }
-            .content {
-                padding: 20px;
-            }
-            .content h2 {
-                font-size: 20px;
-            }
-        }
-    </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Migration Deadline Reminder</h1>
-        </div>
-        <div class="content">
-            <p>Hello <strong>{{USERNAME}}</strong>,</p>
-            
-            <p>This is a friendly reminder that your Windows 11 migration deadline is approaching.</p>
-            
-            <div class="warning-box">
-                <h2>Action Required</h2>
-                <p>Your current virtual machine <strong>{{OLDVMNAME}}</strong> is scheduled for migration.</p>
-                <p class="deadline">Migration Deadline: {{DEADLINE}}</p>
-                <p>Days Remaining: <strong>{{DAYSREMAINING}}</strong></p>
-            </div>
-            
-            <div class="info-box">
-                <h2>What You Need to Know</h2>
-                <ul>
-                    <li><strong>New VM Name:</strong> {{NEWVMNAME}}</li>
-                    <li><strong>RITM Number:</strong> {{RITM}}</li>
-                    <li><strong>Old VM:</strong> {{OLDVMNAME}}</li>
-                </ul>
-            </div>
-            
-            <div class="warning-box">
-                <h2>Important: System Deactivation</h2>
-                <p><strong>Your old virtual desktop ({{OLDVMNAME}}) will be disabled after the deadline.</strong></p>
-                <p>After {{DEADLINE}}, you will no longer be able to access your current system. Please ensure you have transitioned to your new Windows 11 desktop before this date.</p>
-            </div>
-            
-            <div class="info-box">
-                <p class="success">If you have already started using your new Windows 11 desktop, you can safely ignore this reminder. The migration process is automated.</p>
-            </div>
-            
-            <h2>Need Help?</h2>
-            <p>If you have questions or concerns about the migration, please contact IT Support:</p>
-            <ul>
-                <li><strong>Email:</strong> support@contoso.com</li>
-                <li><strong>Phone:</strong> 1-800-123-4567</li>
-                <li><strong>ServiceNow:</strong> Reference RITM {{RITM}}</li>
-            </ul>
-            
-            <p><strong>Important:</strong> Please ensure you save any work and log off from your current desktop before the deadline to ensure a smooth transition.</p>
-        </div>
-        <div class="footer">
-            <p>This is an automated reminder. Please do not reply to this email.</p>
-            <p>&copy; 2025 Contoso Corporation. All rights reserved.</p>
-        </div>
-    </div>
+<body style="margin: 0; padding: 0; background-color: #e6ecf0; font-family: 'Segoe UI', Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #e6ecf0; margin: 0; padding: 0;">
+        <tr>
+            <td align="center" style="padding: 30px 15px;">
+                <table width="650" cellpadding="0" cellspacing="0" border="0" style="max-width: 650px; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #d83b01 0%, #ff6a00 100%); padding: 40px 20px; text-align: center; color: #ffffff; border-radius: 12px 12px 0 0;">
+                            <h1 style="margin: 0; font-size: 28px; font-weight: 600; color: #ffffff;">Migration Deadline Reminder</h1>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px; line-height: 1.8; color: #1a1a1a;">
+                            <p style="font-size: 16px; margin: 10px 0;">Hello <strong>{{USERNAME}}</strong>,</p>
+                            
+                            <p style="font-size: 16px; margin: 10px 0;">This is a friendly reminder that your Windows 11 migration deadline is approaching.</p>
+                            
+                            <!-- Warning Box -->
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+                                <tr>
+                                    <td style="background-color: #fff4ce; padding: 20px; border-left: 4px solid #d83b01; border-radius: 4px;">
+                                        <h2 style="color: #d83b01; font-size: 22px; margin: 0 0 10px 0; font-weight: 600;">Action Required</h2>
+                                        <p style="font-size: 16px; margin: 10px 0;">Your current virtual machine <strong>{{OLDVMNAME}}</strong> is scheduled for migration.</p>
+                                        <p style="font-size: 20px; font-weight: bold; color: #d83b01; margin: 10px 0;">Migration Deadline: {{DEADLINE}}</p>
+                                        <p style="font-size: 16px; margin: 10px 0;">Days Remaining: <strong>{{DAYSREMAINING}}</strong></p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Info Box -->
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+                                <tr>
+                                    <td style="background-color: #f0f6ff; padding: 20px; border-left: 4px solid #0078d4; border-radius: 4px;">
+                                        <h2 style="color: #d83b01; font-size: 22px; margin: 0 0 10px 0; font-weight: 600;">What You Need to Know</h2>
+                                        <ul style="margin: 15px 0; padding-left: 25px;">
+                                            <li style="margin-bottom: 12px; font-size: 16px;"><strong>New VM Name:</strong> {{NEWVMNAME}}</li>
+                                            <li style="margin-bottom: 12px; font-size: 16px;"><strong>RITM Number:</strong> {{RITM}}</li>
+                                            <li style="margin-bottom: 12px; font-size: 16px;"><strong>Old VM:</strong> {{OLDVMNAME}}</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Warning Box 2 -->
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+                                <tr>
+                                    <td style="background-color: #fff4ce; padding: 20px; border-left: 4px solid #d83b01; border-radius: 4px;">
+                                        <h2 style="color: #d83b01; font-size: 22px; margin: 0 0 10px 0; font-weight: 600;">Important: System Deactivation</h2>
+                                        <p style="font-size: 16px; margin: 10px 0;"><strong>Your old virtual desktop ({{OLDVMNAME}}) will be disabled after the deadline.</strong></p>
+                                        <p style="font-size: 16px; margin: 10px 0;">After {{DEADLINE}}, you will no longer be able to access your current system. Please ensure you have transitioned to your new Windows 11 desktop before this date.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Info Box 2 -->
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+                                <tr>
+                                    <td style="background-color: #f0f6ff; padding: 20px; border-left: 4px solid #0078d4; border-radius: 4px;">
+                                        <p style="color: #107c10; font-weight: 600; font-size: 16px; margin: 10px 0;">If you have already started using your new Windows 11 desktop, you can safely ignore this reminder. The migration process is automated.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <h2 style="color: #d83b01; font-size: 22px; margin: 20px 0 10px 0; font-weight: 600; border-left: 4px solid #d83b01; padding-left: 10px;">Need Help?</h2>
+                            <p style="font-size: 16px; margin: 10px 0;">If you have questions or concerns about the migration, please contact IT Support:</p>
+                            <ul style="margin: 15px 0; padding-left: 25px;">
+                                <li style="margin-bottom: 12px; font-size: 16px;"><strong>Email:</strong> support@contoso.com</li>
+                                <li style="margin-bottom: 12px; font-size: 16px;"><strong>Phone:</strong> 1-800-123-4567</li>
+                                <li style="margin-bottom: 12px; font-size: 16px;"><strong>ServiceNow:</strong> Reference RITM {{RITM}}</li>
+                            </ul>
+                            
+                            <p style="font-size: 16px; margin: 10px 0;"><strong>Important:</strong> Please ensure you save any work and log off from your current desktop before the deadline to ensure a smooth transition.</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8fafc; padding: 20px; text-align: center; font-size: 14px; color: #4a4a4a; border-top: 1px solid #e0e0e0; border-radius: 0 0 12px 12px;">
+                            <p style="margin: 5px 0;">This is an automated reminder. Please do not reply to this email.</p>
+                            <p style="margin: 5px 0;">&copy; 2025 Contoso Corporation. All rights reserved.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 </body>
 </html>
 "@
