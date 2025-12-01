@@ -85,14 +85,20 @@ $emailBodyTemplate = @"
                     <!-- Content -->
                     <tr>
                         <td style="padding: 40px 30px; line-height: 1.8; color: #1a1a1a;">
-                            <p style="font-size: 16px; margin: 10px 0;">Hello <strong>{{USERNAME}}</strong>,</p>
-                            
-                            <p style="font-size: 16px; margin: 10px 0;">This is a friendly reminder that your Windows 11 migration deadline is approaching.</p>
+                            <table width="590" cellpadding="0" cellspacing="0" border="0" style="width: 590px;">
+                                <tr>
+                                    <td>
+                                        <p style="font-size: 16px; margin: 10px 0;">Hello <strong>{{USERNAME}}</strong>,</p>
+                                        
+                                        <p style="font-size: 16px; margin: 10px 0;">This is a friendly reminder that your Windows 11 migration deadline is approaching.</p>
+                                    </td>
+                                </tr>
+                            </table>
                             
                             <!-- Warning Box -->
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+                            <table width="590" cellpadding="0" cellspacing="0" border="0" style="width: 590px; margin: 20px 0;">
                                 <tr>
-                                    <td style="background-color: #fff4ce; padding: 20px; border-left: 4px solid #d83b01; border-radius: 4px;">
+                                    <td style="background-color: #fff4ce; padding: 20px; border-left: 4px solid #d83b01;">
                                         <h2 style="color: #d83b01; font-size: 22px; margin: 0 0 10px 0; font-weight: 600;">Action Required</h2>
                                         <p style="font-size: 16px; margin: 10px 0;">Your current virtual machine <strong>{{OLDVMNAME}}</strong> is scheduled for migration.</p>
                                         <p style="font-size: 20px; font-weight: bold; color: #d83b01; margin: 10px 0;">Migration Deadline: {{DEADLINE}}</p>
@@ -102,9 +108,9 @@ $emailBodyTemplate = @"
                             </table>
                             
                             <!-- Info Box -->
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+                            <table width="590" cellpadding="0" cellspacing="0" border="0" style="width: 590px; margin: 20px 0;">
                                 <tr>
-                                    <td style="background-color: #f0f6ff; padding: 20px; border-left: 4px solid #0078d4; border-radius: 4px;">
+                                    <td style="background-color: #f0f6ff; padding: 20px; border-left: 4px solid #0078d4;">
                                         <h2 style="color: #d83b01; font-size: 22px; margin: 0 0 10px 0; font-weight: 600;">What You Need to Know</h2>
                                         <ul style="margin: 15px 0; padding-left: 25px;">
                                             <li style="margin-bottom: 12px; font-size: 16px;"><strong>New VM Name:</strong> {{NEWVMNAME}}</li>
@@ -116,9 +122,9 @@ $emailBodyTemplate = @"
                             </table>
                             
                             <!-- Warning Box 2 -->
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+                            <table width="590" cellpadding="0" cellspacing="0" border="0" style="width: 590px; margin: 20px 0;">
                                 <tr>
-                                    <td style="background-color: #fff4ce; padding: 20px; border-left: 4px solid #d83b01; border-radius: 4px;">
+                                    <td style="background-color: #fff4ce; padding: 20px; border-left: 4px solid #d83b01;">
                                         <h2 style="color: #d83b01; font-size: 22px; margin: 0 0 10px 0; font-weight: 600;">Important: System Deactivation</h2>
                                         <p style="font-size: 16px; margin: 10px 0;"><strong>Your old virtual desktop ({{OLDVMNAME}}) will be disabled after the deadline.</strong></p>
                                         <p style="font-size: 16px; margin: 10px 0;">After {{DEADLINE}}, you will no longer be able to access your current system. Please ensure you have transitioned to your new Windows 11 desktop before this date.</p>
@@ -127,23 +133,29 @@ $emailBodyTemplate = @"
                             </table>
                             
                             <!-- Info Box 2 -->
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+                            <table width="590" cellpadding="0" cellspacing="0" border="0" style="width: 590px; margin: 20px 0;">
                                 <tr>
-                                    <td style="background-color: #f0f6ff; padding: 20px; border-left: 4px solid #0078d4; border-radius: 4px;">
+                                    <td style="background-color: #f0f6ff; padding: 20px; border-left: 4px solid #0078d4;">
                                         <p style="color: #107c10; font-weight: 600; font-size: 16px; margin: 10px 0;">If you have already started using your new Windows 11 desktop, you can safely ignore this reminder. The migration process is automated.</p>
                                     </td>
                                 </tr>
                             </table>
                             
-                            <h2 style="color: #d83b01; font-size: 22px; margin: 20px 0 10px 0; font-weight: 600; border-left: 4px solid #d83b01; padding-left: 10px;">Need Help?</h2>
-                            <p style="font-size: 16px; margin: 10px 0;">If you have questions or concerns about the migration, please contact IT Support:</p>
-                            <ul style="margin: 15px 0; padding-left: 25px;">
-                                <li style="margin-bottom: 12px; font-size: 16px;"><strong>Email:</strong> support@contoso.com</li>
-                                <li style="margin-bottom: 12px; font-size: 16px;"><strong>Phone:</strong> 1-800-123-4567</li>
-                                <li style="margin-bottom: 12px; font-size: 16px;"><strong>ServiceNow:</strong> Reference RITM {{RITM}}</li>
-                            </ul>
-                            
-                            <p style="font-size: 16px; margin: 10px 0;"><strong>Important:</strong> Please ensure you save any work and log off from your current desktop before the deadline to ensure a smooth transition.</p>
+                            <table width="590" cellpadding="0" cellspacing="0" border="0" style="width: 590px;">
+                                <tr>
+                                    <td>
+                                        <h2 style="color: #d83b01; font-size: 22px; margin: 20px 0 10px 0; font-weight: 600; border-left: 4px solid #d83b01; padding-left: 10px;">Need Help?</h2>
+                                        <p style="font-size: 16px; margin: 10px 0;">If you have questions or concerns about the migration, please contact IT Support:</p>
+                                        <ul style="margin: 15px 0; padding-left: 25px;">
+                                            <li style="margin-bottom: 12px; font-size: 16px;"><strong>Email:</strong> support@contoso.com</li>
+                                            <li style="margin-bottom: 12px; font-size: 16px;"><strong>Phone:</strong> 1-800-123-4567</li>
+                                            <li style="margin-bottom: 12px; font-size: 16px;"><strong>ServiceNow:</strong> Reference RITM {{RITM}}</li>
+                                        </ul>
+                                        
+                                        <p style="font-size: 16px; margin: 10px 0;"><strong>Important:</strong> Please ensure you save any work and log off from your current desktop before the deadline to ensure a smooth transition.</p>
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
                     
