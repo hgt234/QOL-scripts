@@ -32,7 +32,7 @@ param(
     Preview the emails without sending them
 
 .EXAMPLE
-    .\send-migration-reminders.ps1 -UserListFile "users.csv"1
+    .\send-migration-reminders.ps1 -UserListFile "users.csv"
     
 .EXAMPLE
     .\send-migration-reminders.ps1 -UserListFile "users.csv" -ReminderDaysThreshold 3 -WhatIf
@@ -60,81 +60,136 @@ $smtpUseSsl = $false
 $smtpUseCredentials = $false  # Set to $true if SMTP requires authentication
 
 # Email Subject
-$emailSubject = "⏰ Reminder: Windows 11 Migration Deadline Approaching"
+$emailSubject = "Reminder: Windows 11 Migration Deadline Approaching"
 
 # Email Body Template (HTML)
 $emailBodyTemplate = @"
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background-color: #d83b01; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-        .content { background-color: #f5f5f5; padding: 30px; border-radius: 0 0 5px 5px; }
-        .warning-box { background-color: #fff4ce; padding: 15px; margin: 15px 0; border-left: 4px solid #d83b01; }
-        .info-box { background-color: white; padding: 15px; margin: 15px 0; border-left: 4px solid #0078d4; }
-        .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+        }
+        .email-wrapper {
+            width: 100%;
+            background-color: #f0f0f0;
+            padding: 20px 0;
+        }
+        .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 0;
+            background-color: #ffffff;
+        }
+        .header { 
+            background-color: #d83b01; 
+            color: white; 
+            padding: 20px; 
+            text-align: center; 
+            border-radius: 5px 5px 0 0; 
+        }
+        .content { 
+            background-color: #ffffff; 
+            padding: 30px; 
+            border-radius: 0 0 5px 5px; 
+        }
+        .warning-box { 
+            background-color: #fff4ce; 
+            padding: 15px; 
+            margin: 15px 0; 
+            border-left: 4px solid #d83b01; 
+        }
+        .info-box { 
+            background-color: #f0f6ff; 
+            padding: 15px; 
+            margin: 15px 0; 
+            border-left: 4px solid #0078d4; 
+        }
+        .footer { 
+            text-align: center; 
+            margin-top: 20px; 
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            font-size: 12px; 
+            color: #666; 
+        }
         h1 { margin: 0; font-size: 24px; }
-        h2 { color: #d83b01; font-size: 18px; }
+        h2 { color: #d83b01; font-size: 18px; margin-top: 0; }
         .deadline { font-size: 20px; font-weight: bold; color: #d83b01; }
-        .button { display: inline-block; padding: 12px 24px; background-color: #0078d4; color: white; text-decoration: none; border-radius: 4px; margin: 10px 0; }
-        ul { padding-left: 20px; }
+        ul { padding-left: 20px; margin: 10px 0; }
         li { margin: 8px 0; }
         .success { color: #107c10; font-weight: bold; }
+        p { margin: 10px 0; }
+        table { width: 100%; border-collapse: collapse; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>⏰ Migration Deadline Reminder</h1>
-        </div>
-        <div class="content">
-            <p>Hello <strong>{{USERNAME}}</strong>,</p>
-            
-            <p>This is a friendly reminder that your Windows 11 migration deadline is approaching.</p>
-            
-            <div class="warning-box">
-                <h2>⚠️ Action Required</h2>
-                <p>Your current virtual machine <strong>{{OLDVMNAME}}</strong> is scheduled for migration.</p>
-                <p class="deadline">Migration Deadline: {{DEADLINE}}</p>
-                <p>Days Remaining: <strong>{{DAYSREMAINING}}</strong></p>
-            </div>
-            
-            <div class="info-box">
-                <h2>📋 What You Need to Know</h2>
-                <ul>
-                    <li><strong>New VM Name:</strong> {{NEWVMNAME}}</li>
-                    <li><strong>RITM Number:</strong> {{RITM}}</li>
-                    <li><strong>Old VM:</strong> {{OLDVMNAME}}</li>
-                </ul>
-            </div>
-            
-            <div class="warning-box">
-                <h2>⚠️ Important: System Deactivation</h2>
-                <p><strong>Your old virtual desktop ({{OLDVMNAME}}) will be disabled after the deadline.</strong></p>
-                <p>After {{DEADLINE}}, you will no longer be able to access your current system. Please ensure you have transitioned to your new Windows 11 desktop before this date.</p>
-            </div>
-            
-            <div class="info-box">
-                <p class="success">✅ If you have already started using your new Windows 11 desktop, you can safely ignore this reminder. The migration process is automated.</p>
-            </div>
-            
-            <h2>❓ Need Help?</h2>
-            <p>If you have questions or concerns about the migration, please contact IT Support:</p>
-            <ul>
-                <li>📧 Email: support@contoso.com</li>
-                <li>📞 Phone: 1-800-123-4567</li>
-                <li>🎫 ServiceNow: Reference RITM {{RITM}}</li>
-            </ul>
-            
-            <p><strong>Important:</strong> Please ensure you save any work and log off from your current desktop before the deadline to ensure a smooth transition.</p>
-            
-            <div class="footer">
-                <p>This is an automated reminder. Please do not reply to this email.</p>
-                <p>&copy; 2025 Contoso Corporation. All rights reserved.</p>
-            </div>
-        </div>
+    <div class="email-wrapper">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+            <tr>
+                <td align="center">
+                    <div class="container">
+                        <div class="header">
+                            <h1>Migration Deadline Reminder</h1>
+                        </div>
+                        <div class="content">
+                            <p>Hello <strong>{{USERNAME}}</strong>,</p>
+                            
+                            <p>This is a friendly reminder that your Windows 11 migration deadline is approaching.</p>
+                            
+                            <div class="warning-box">
+                                <h2>Action Required</h2>
+                                <p>Your current virtual machine <strong>{{OLDVMNAME}}</strong> is scheduled for migration.</p>
+                                <p class="deadline">Migration Deadline: {{DEADLINE}}</p>
+                                <p>Days Remaining: <strong>{{DAYSREMAINING}}</strong></p>
+                            </div>
+                            
+                            <div class="info-box">
+                                <h2>What You Need to Know</h2>
+                                <ul>
+                                    <li><strong>New VM Name:</strong> {{NEWVMNAME}}</li>
+                                    <li><strong>RITM Number:</strong> {{RITM}}</li>
+                                    <li><strong>Old VM:</strong> {{OLDVMNAME}}</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="warning-box">
+                                <h2>Important: System Deactivation</h2>
+                                <p><strong>Your old virtual desktop ({{OLDVMNAME}}) will be disabled after the deadline.</strong></p>
+                                <p>After {{DEADLINE}}, you will no longer be able to access your current system. Please ensure you have transitioned to your new Windows 11 desktop before this date.</p>
+                            </div>
+                            
+                            <div class="info-box">
+                                <p class="success">If you have already started using your new Windows 11 desktop, you can safely ignore this reminder. The migration process is automated.</p>
+                            </div>
+                            
+                            <h2>Need Help?</h2>
+                            <p>If you have questions or concerns about the migration, please contact IT Support:</p>
+                            <ul>
+                                <li><strong>Email:</strong> support@contoso.com</li>
+                                <li><strong>Phone:</strong> 1-800-123-4567</li>
+                                <li><strong>ServiceNow:</strong> Reference RITM {{RITM}}</li>
+                            </ul>
+                            
+                            <p><strong>Important:</strong> Please ensure you save any work and log off from your current desktop before the deadline to ensure a smooth transition.</p>
+                            
+                            <div class="footer">
+                                <p>This is an automated reminder. Please do not reply to this email.</p>
+                                <p>&copy; 2025 Contoso Corporation. All rights reserved.</p>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        </table>
     </div>
 </body>
 </html>
