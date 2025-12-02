@@ -1,39 +1,83 @@
-// CMPivot Query: Windows Hello for Business Compatibility Check
-// This query checks if devices meet the hardware requirements for Windows Hello
+// CMPivot Query: Windows Hello Biometric Hardware Detection
+// Detects fingerprint readers, IR cameras, and other biometric devices for Windows Hello
 
-// Check TPM version, UEFI/BIOS mode, and Windows version
 Device
 | extend DeviceName = tostring(Computer)
 | join kind=inner (
-    // Get TPM information
+    // Get PnP devices - looking for biometric devices
+    PnPDeviceDriver
+    | where Service in ("WudfRd", "biometric", "WinBio") 
+        or DeviceName contains "fingerprint"
+        or DeviceName contains "biometric"
+        or DeviceName contains "Goodix"
+        or DeviceName contains "Synaptics"
+        or DeviceName contains "Validity"
+        or DeviceName contains "Elan"
+        or DeviceName contains "ELAN"
+        or DeviceName contains "AuthenTec"
+        or DeviceID contains "VID_27C6"  // Goodix
+        or DeviceID contains "VID_06CB"  // Synaptics
+        or DeviceID contains "VID_138A"  // Validity/Synaptics
+        or DeviceID contains "VID_04F3"  // Elan
+        or DeviceID contains "BIOMETRIC"
+    | extend DeviceType = case(
+        DeviceName contains "fingerprint" or DeviceName contains "Goodix" or DeviceName contains "Synaptics" or DeviceName contains "Validity" or DeviceName contains "Elan" or DeviceName contains "ELAN" or DeviceName contains "AuthenTec", "Fingerprint Reader",
+        "Biometric Device"
+    )
+    | summarize 
+        BiometricDevices = make_list(DeviceName),
+        BiometricTypes = make_list(DeviceType),
+        BiometricCount = count()
+        by Device
+) on Device
+| join kind=leftouter (
+    // Get camera devices - looking for IR cameras
+    PnPDeviceDriver
+    | where ClassGuid == "{ca3e7ab9-b4c3-4ae6-8251-579ef933890f}"  // Camera class
+        or DeviceName contains "camera"
+        or DeviceName contains "webcam"
+    | where DeviceName contains "IR"
+        or DeviceName contains "infrared"
+        or DeviceName contains "Intel(R) RealSense"
+        or DeviceName contains "3D Camera"
+        or Manufacturer contains "Intel"
+    | extend CameraType = case(
+        DeviceName contains "IR" or DeviceName contains "infrared" or DeviceName contains "Intel(R) RealSense" or DeviceName contains "3D", "IR Camera (Windows Hello)",
+        "Standard Camera"
+    )
+    | where CameraType == "IR Camera (Windows Hello)"
+    | summarize 
+        IRCameras = make_list(DeviceName),
+        IRCameraCount = count()
+        by Device
+) on Device
+| join kind=leftouter (
+    // Get TPM for additional context
     Tpm
     | extend HasTPM = case(
         SpecVersion startswith "2.0", "TPM 2.0",
         SpecVersion startswith "1.2", "TPM 1.2",
-        "No TPM or Unknown"
+        "No TPM"
     )
-    | project Device, HasTPM, TPMEnabled = IsEnabled_InitialValue, TPMActivated = IsActivated_InitialValue
+    | project Device, HasTPM
 ) on Device
-| join kind=inner (
-    // Get BIOS/UEFI mode
-    SystemEnclosure
-    | project Device, BIOSMode = SMBIOSAssetTag
-) on Device
-| join kind=inner (
-    // Get Operating System information
-    OperatingSystem
-    | extend OSBuild = tostring(BuildNumber)
-    | extend WindowsVersion = case(
-        BuildNumber >= 22000, "Windows 11",
-        BuildNumber >= 10240, "Windows 10",
-        "Older than Windows 10"
-    )
-    | project Device, WindowsVersion, OSBuild, Caption
-) on Device
-| extend WindowsHelloCompatible = case(
-    HasTPM == "TPM 2.0" and TPMEnabled == 1 and TPMActivated == 1 and (WindowsVersion == "Windows 10" or WindowsVersion == "Windows 11"), "✓ Compatible",
-    HasTPM == "TPM 1.2" and TPMEnabled == 1 and TPMActivated == 1 and (WindowsVersion == "Windows 10" or WindowsVersion == "Windows 11"), "⚠ Limited (TPM 1.2)",
-    "✗ Not Compatible"
+| extend 
+    HasFingerprint = BiometricCount > 0,
+    HasIRCamera = IRCameraCount > 0,
+    TotalBiometricDevices = BiometricCount + coalesce(IRCameraCount, 0)
+| extend WindowsHelloCapable = case(
+    HasFingerprint and HasIRCamera, "Full Support (Fingerprint + IR Camera)",
+    HasFingerprint, "Fingerprint Only",
+    HasIRCamera, "IR Camera Only",
+    "No Biometric Devices"
 )
-| project DeviceName, WindowsHelloCompatible, HasTPM, TPMEnabled, TPMActivated, WindowsVersion, OSBuild, Caption
-| order by WindowsHelloCompatible desc, DeviceName asc
+| project 
+    DeviceName,
+    WindowsHelloCapable,
+    HasFingerprint,
+    HasIRCamera,
+    TotalBiometricDevices,
+    BiometricDevices,
+    IRCameras,
+    HasTPM
+| order by TotalBiometricDevices desc, DeviceName asc
