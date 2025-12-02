@@ -1,21 +1,19 @@
 // CMPivot Query: Windows Hello Biometric Hardware Detection
-// Detects fingerprint readers and IR cameras for Windows Hello (HP laptops)
+// Shows which devices have Synaptics Touch fingerprint readers and HP IR cameras
 
 PnPDeviceDriver
-| where (Name contains "fingerprint" 
-    or Name contains "Goodix"
-    or Name contains "Synaptics"
-    or Name contains "Validity"
-    or Name contains "Elan"
-    or Name contains "AuthenTec"
-    or DeviceID contains "VID_27C6"
-    or DeviceID contains "VID_06CB"
-    or DeviceID contains "VID_138A"
-    or DeviceID contains "VID_04F3")
-    or (Name contains "Camera" and (Name contains "IR" or Name contains "infrared"))
-    or Name contains "RealSense"
-    or Name contains "HP HD Camera"
-    or ClassGuid == "{53D29EF7-377C-4D14-864B-EB3A85769359}"
+| where (Name contains "Synaptics Touch" or Name contains "Synaptics Fingerprint")
+    or (Name contains "HP" and Name contains "Camera" and (Name contains "IR" or Name contains "infrared"))
 | where Status == "OK"
-| project Device, Name, Manufacturer, DeviceID
-| order by Device asc
+| extend BiometricType = case(
+    Name contains "Synaptics Touch" or Name contains "Synaptics Fingerprint", "Fingerprint",
+    Name contains "HP" and (Name contains "IR" or Name contains "infrared"), "IRCamera",
+    "Other"
+)
+| summarize 
+    HasFingerprint = countif(BiometricType == "Fingerprint") > 0,
+    HasIRCamera = countif(BiometricType == "IRCamera") > 0,
+    Devices = make_list(Name)
+    by Device
+| project Device, HasFingerprint, HasIRCamera, Devices
+| order by HasFingerprint desc, HasIRCamera desc, Device asc
