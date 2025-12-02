@@ -2,18 +2,13 @@
 // Shows which devices have Synaptics Touch fingerprint readers and HP IR cameras
 
 PnPDeviceDriver
-| where (Name contains "Synaptics Touch" or Name contains "Synaptics Fingerprint")
-    or (Name contains "HP" and Name contains "Camera" and (Name contains "IR" or Name contains "infrared"))
-| where Status == "OK"
+| where (Name contains 'Synaptics Touch' or Name contains 'Synaptics Fingerprint')
+    or (Name contains 'HP' and Name contains 'Camera' and (Name contains 'IR' or Name contains 'infrared'))
+| where Status == 'OK'
 | extend BiometricType = case(
-    Name contains "Synaptics Touch" or Name contains "Synaptics Fingerprint", "Fingerprint",
-    Name contains "HP" and (Name contains "IR" or Name contains "infrared"), "IRCamera",
-    "Other"
+    Name contains 'Synaptics', 'Fingerprint',
+    Name contains 'IR' or Name contains 'infrared', 'IRCamera',
+    'Other'
 )
-| summarize 
-    HasFingerprint = countif(BiometricType == "Fingerprint") > 0,
-    HasIRCamera = countif(BiometricType == "IRCamera") > 0,
-    Devices = make_list(Name)
-    by Device
-| project Device, HasFingerprint, HasIRCamera, Devices
-| order by HasFingerprint desc, HasIRCamera desc, Device asc
+| project Device, Name, BiometricType
+| order by Device asc
