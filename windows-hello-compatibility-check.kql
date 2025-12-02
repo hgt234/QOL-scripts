@@ -1,0 +1,39 @@
+// CMPivot Query: Windows Hello for Business Compatibility Check
+// This query checks if devices meet the hardware requirements for Windows Hello
+
+// Check TPM version, UEFI/BIOS mode, and Windows version
+Device
+| extend DeviceName = tostring(Computer)
+| join kind=inner (
+    // Get TPM information
+    Tpm
+    | extend HasTPM = case(
+        SpecVersion startswith "2.0", "TPM 2.0",
+        SpecVersion startswith "1.2", "TPM 1.2",
+        "No TPM or Unknown"
+    )
+    | project Device, HasTPM, TPMEnabled = IsEnabled_InitialValue, TPMActivated = IsActivated_InitialValue
+) on Device
+| join kind=inner (
+    // Get BIOS/UEFI mode
+    SystemEnclosure
+    | project Device, BIOSMode = SMBIOSAssetTag
+) on Device
+| join kind=inner (
+    // Get Operating System information
+    OperatingSystem
+    | extend OSBuild = tostring(BuildNumber)
+    | extend WindowsVersion = case(
+        BuildNumber >= 22000, "Windows 11",
+        BuildNumber >= 10240, "Windows 10",
+        "Older than Windows 10"
+    )
+    | project Device, WindowsVersion, OSBuild, Caption
+) on Device
+| extend WindowsHelloCompatible = case(
+    HasTPM == "TPM 2.0" and TPMEnabled == 1 and TPMActivated == 1 and (WindowsVersion == "Windows 10" or WindowsVersion == "Windows 11"), "✓ Compatible",
+    HasTPM == "TPM 1.2" and TPMEnabled == 1 and TPMActivated == 1 and (WindowsVersion == "Windows 10" or WindowsVersion == "Windows 11"), "⚠ Limited (TPM 1.2)",
+    "✗ Not Compatible"
+)
+| project DeviceName, WindowsHelloCompatible, HasTPM, TPMEnabled, TPMActivated, WindowsVersion, OSBuild, Caption
+| order by WindowsHelloCompatible desc, DeviceName asc

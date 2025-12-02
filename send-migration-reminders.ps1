@@ -5,6 +5,9 @@ param(
     [Parameter(Mandatory=$false)]
     [int]$ReminderDaysThreshold = 7,  # Send reminder if deadline is within this many days
     
+    [Parameter(Mandatory=$false)]
+    [int]$RemovalGracePeriod = 1,  # Remove user access this many days after deadline
+    
     [switch]$WhatIf
 )
 
@@ -28,6 +31,9 @@ param(
 .PARAMETER ReminderDaysThreshold
     Send reminders if deadline is within this many days (default: 7)
 
+.PARAMETER RemovalGracePeriod
+    Remove user access this many days after deadline (default: 1)
+
 .PARAMETER WhatIf
     Preview the emails without sending them
 
@@ -48,6 +54,10 @@ $keyVaultName = "my-keyvault"
 # Old VM Configuration
 $oldVMResourceGroup = "current-rg"  # Resource group where old VMs are located
 $oldVMSubscriptionId = "00000000-0000-0000-0000-000000000000"  # Subscription ID for old VMs
+
+# AVD Host Pool Configuration
+$hostPoolName = "your-hostpool-name"  # Name of the AVD host pool
+$hostPoolResourceGroup = "current-rg"  # Resource group where host pool is located
 
 # Tag Configuration
 $migrationDeadlineTag = "W11MigrationDeadline"
@@ -77,7 +87,7 @@ $emailBodyTemplate = @"
                 <table width="650" cellpadding="0" cellspacing="0" border="0" style="max-width: 650px; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
                     <!-- Header -->
                     <tr>
-                        <td style="background: linear-gradient(135deg, #d83b01 0%, #ff6a00 100%); padding: 40px 20px; text-align: center; color: #ffffff; border-radius: 12px 12px 0 0;">
+                        <td style="background-color: #d83b01; padding: 40px 20px; text-align: center; border-radius: 12px 12px 0 0;">
                             <h1 style="margin: 0; font-size: 28px; font-weight: 600; color: #ffffff;">Migration Deadline Reminder</h1>
                         </td>
                     </tr>
@@ -175,6 +185,95 @@ $emailBodyTemplate = @"
 "@
 
 # ============================================================================
+# FUNCTIONS
+# ============================================================================
+
+function Remove-UserFromSessionHost {
+    param(
+        [string]$VMName,
+        [string]$HostPoolName,
+        [string]$HostPoolResourceGroup,
+        [string]$Username,
+        [bool]$WhatIfMode
+    )
+    
+    try {
+        # Construct the session host name (hostpool/vmname.domain)
+        $sessionHostName = "$HostPoolName/$VMName"
+        
+        # Get the session host to verify it exists
+        $sessionHost = Get-AzWvdSessionHost -HostPoolName $HostPoolName -ResourceGroupName $HostPoolResourceGroup -Name $sessionHostName -ErrorAction SilentlyContinue
+        
+        if (-not $sessionHost) {
+            Write-Host "    Session host not found in host pool: $sessionHostName" -ForegroundColor Yellow
+            return $false
+        }
+        
+        # Get active user sessions on this session host
+        $userSessions = Get-AzWvdUserSession -HostPoolName $HostPoolName -ResourceGroupName $HostPoolResourceGroup -SessionHostName $sessionHostName -ErrorAction SilentlyContinue |
+            Where-Object { $_.UserPrincipalName -eq $Username -or $_.ActiveDirectoryUserName -like "*$Username*" }
+        
+        if ($WhatIfMode) {
+            if ($userSessions) {
+                Write-Host "    [WhatIf] Would disconnect $($userSessions.Count) active session(s) and unassign user from $VMName" -ForegroundColor Cyan
+            } else {
+                Write-Host "    [WhatIf] Would unassign user from $VMName (no active sessions)" -ForegroundColor Cyan
+            }
+            return $true
+        }
+        
+        # Disconnect any active sessions
+        $disconnectedSessions = 0
+        if ($userSessions) {
+            foreach ($session in $userSessions) {
+                try {
+                    # Extract session ID from the full resource ID
+                    $sessionId = $session.Name.Split('/')[-1]
+                    Remove-AzWvdUserSession -HostPoolName $HostPoolName -ResourceGroupName $HostPoolResourceGroup -SessionHostName $sessionHostName -Id $sessionId -Force -ErrorAction Stop
+                    $disconnectedSessions++
+                    Write-Host "    Disconnected session: $sessionId" -ForegroundColor Green
+                }
+                catch {
+                    Write-Host "    Warning: Failed to disconnect session $sessionId : $_" -ForegroundColor Yellow
+                }
+            }
+        }
+        
+        # Update the session host to set it to drain mode or remove user assignment
+        # For personal desktops, we need to unassign the user
+        try {
+            Update-AzWvdSessionHost -HostPoolName $HostPoolName -ResourceGroupName $HostPoolResourceGroup -Name $sessionHostName -AllowNewSession:$false -ErrorAction Stop
+            Write-Host "    Set session host to drain mode (no new sessions allowed)" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "    Warning: Could not set drain mode: $_" -ForegroundColor Yellow
+        }
+        
+        # For personal host pools, unassign the user
+        if ($sessionHost.AssignedUser) {
+            try {
+                Update-AzWvdSessionHost -HostPoolName $HostPoolName -ResourceGroupName $HostPoolResourceGroup -Name $sessionHostName -AssignedUser "" -ErrorAction Stop
+                Write-Host "    Unassigned user from personal desktop" -ForegroundColor Green
+            }
+            catch {
+                Write-Host "    Warning: Could not unassign user: $_" -ForegroundColor Yellow
+            }
+        }
+        
+        if ($disconnectedSessions -gt 0 -or $sessionHost.AssignedUser) {
+            return $true
+        } else {
+            Write-Host "    User had no active sessions or assignments on this host" -ForegroundColor Yellow
+            return $true  # Still consider it successful if there was nothing to remove
+        }
+    }
+    catch {
+        Write-Host "    Failed to remove user from session host: $_" -ForegroundColor Red
+        return $false
+    }
+}
+
+# ============================================================================
 # SCRIPT EXECUTION - Do not modify below this line unless needed
 # ============================================================================
 
@@ -184,6 +283,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Mode: $(if ($WhatIf) { 'What-If (Preview)' } else { 'Execute' })"
 Write-Host "User List File: $UserListFile"
 Write-Host "Reminder Threshold: $ReminderDaysThreshold days"
+Write-Host "Removal Grace Period: $RemovalGracePeriod day(s) after deadline"
 Write-Host "========================================`n" -ForegroundColor Cyan
 
 # Validate file exists
@@ -192,12 +292,17 @@ if (-not (Test-Path $UserListFile)) {
     exit 1
 }
 
-# Ensure Az module is installed
-if (-not (Get-Module -ListAvailable -Name Az)) {
-    Write-Host "Installing Az PowerShell module..."
-    Install-Module -Name Az -AllowClobber -Force -Scope CurrentUser
+# Ensure required modules are installed
+if (-not (Get-Module -ListAvailable -Name Az.Compute)) {
+    Write-Host "Installing Az.Compute module..."
+    Install-Module -Name Az.Compute -AllowClobber -Force -Scope CurrentUser
 }
-Import-Module Az
+if (-not (Get-Module -ListAvailable -Name Az.DesktopVirtualization)) {
+    Write-Host "Installing Az.DesktopVirtualization module..."
+    Install-Module -Name Az.DesktopVirtualization -AllowClobber -Force -Scope CurrentUser
+}
+Import-Module Az.Compute
+Import-Module Az.DesktopVirtualization
 
 # Connect to Azure
 $context = Get-AzContext
@@ -286,11 +391,12 @@ catch {
 }
 
 # ============================================================================
-# Check migration deadlines and prepare reminder list
+# Check migration deadlines and prepare reminder/removal lists
 # ============================================================================
 Write-Host "[Step 4] Checking migration deadlines..." -ForegroundColor Yellow
 
 $reminderList = @()
+$removalList = @()
 $today = Get-Date
 $noTagCount = 0
 $notDueCount = 0
@@ -308,8 +414,24 @@ foreach ($assignment in $userAssignments) {
             
             Write-Host " Deadline: $($deadline.ToString('yyyy-MM-dd')) ($daysRemaining days)" -ForegroundColor Cyan
             
+            # Check if user should be removed (deadline passed + grace period)
+            if ($daysRemaining -lt -$RemovalGracePeriod) {
+                $removalList += [PSCustomObject]@{
+                    Username       = $assignment.Username
+                    RITMNumber     = $assignment.RITMNumber
+                    OldVMName      = $assignment.OldVMName
+                    NewVMName      = $assignment.NewVMName
+                    Deadline       = $deadline
+                    DeadlineString = $deadline.ToString('MMMM dd, yyyy')
+                    DaysOverdue    = [Math]::Abs($daysRemaining)
+                    Removed        = $false
+                    Success        = $false
+                    ErrorMessage   = ""
+                }
+                Write-Host "    → User access will be removed (deadline passed)" -ForegroundColor Red
+            }
             # Check if reminder should be sent
-            if ($daysRemaining -le $ReminderDaysThreshold -and $daysRemaining -ge 0) {
+            elseif ($daysRemaining -le $ReminderDaysThreshold -and $daysRemaining -ge 0) {
                 $reminderList += [PSCustomObject]@{
                     Username       = $assignment.Username
                     RITMNumber     = $assignment.RITMNumber
@@ -341,11 +463,54 @@ foreach ($assignment in $userAssignments) {
 
 Write-Host "`n✓ Checked $($userAssignments.Count) VMs" -ForegroundColor Green
 Write-Host "  - Reminders to send: $($reminderList.Count)" -ForegroundColor Yellow
+Write-Host "  - Users to remove: $($removalList.Count)" -ForegroundColor Red
 Write-Host "  - Not yet due: $notDueCount" -ForegroundColor Green
 Write-Host "  - No tag found: $noTagCount`n" -ForegroundColor $(if ($noTagCount -gt 0) { 'Yellow' } else { 'Green' })
 
-if ($reminderList.Count -eq 0) {
-    Write-Host "✅ No reminder emails need to be sent at this time." -ForegroundColor Green
+# ============================================================================
+# Remove user access for overdue migrations
+# ============================================================================
+if ($removalList.Count -gt 0) {
+    Write-Host "[Step 4a] Removing user access for overdue migrations..." -ForegroundColor Red
+    Write-Host "Users with overdue migrations:" -ForegroundColor Red
+    $removalList | Format-Table -AutoSize Username, OldVMName, DeadlineString, DaysOverdue
+    Write-Host ""
+    
+    if ($WhatIf) {
+        Write-Host "WhatIf mode: No users will be removed`n" -ForegroundColor Yellow
+    }
+    
+    $removedCount = 0
+    $removeFailCount = 0
+    
+    foreach ($removal in $removalList) {
+        Write-Host "  Removing access: $($removal.Username) from $($removal.OldVMName)..."
+        
+        $removed = Remove-UserFromSessionHost -VMName $removal.OldVMName -HostPoolName $hostPoolName -HostPoolResourceGroup $hostPoolResourceGroup -Username $removal.Username -WhatIfMode $WhatIf
+        
+        if ($removed) {
+            $removal.Removed = $true
+            $removal.Success = $true
+            $removedCount++
+            if (-not $WhatIf) {
+                Write-Host "  ✓ Access removed from session host" -ForegroundColor Green
+            }
+        }
+        else {
+            $removeFailCount++
+            if (-not $WhatIf) {
+                Write-Host "  ✗ Failed to remove access" -ForegroundColor Red
+            }
+        }
+    }
+    
+    Write-Host "`n✓ User removal completed" -ForegroundColor Green
+    Write-Host "  - Successfully removed: $removedCount" -ForegroundColor Green
+    Write-Host "  - Failed: $removeFailCount`n" -ForegroundColor $(if ($removeFailCount -gt 0) { 'Red' } else { 'Green' })
+}
+
+if ($reminderList.Count -eq 0 -and $removalList.Count -eq 0) {
+    Write-Host "✅ No actions needed at this time." -ForegroundColor Green
     exit 0
 }
 
@@ -419,41 +584,72 @@ foreach ($reminder in $reminderList) {
 # SUMMARY REPORT
 # ============================================================================
 Write-Host "`n========================================" -ForegroundColor Cyan
-Write-Host "REMINDER EMAIL SUMMARY" -ForegroundColor Cyan
+Write-Host "MIGRATION MANAGEMENT SUMMARY" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Total VMs Checked:      $($userAssignments.Count)"
-Write-Host "Reminders Needed:       $($reminderList.Count)"
-Write-Host "Emails Sent:            $sentCount" -ForegroundColor $(if ($sentCount -gt 0) { 'Green' } else { 'Yellow' })
-Write-Host "Failed:                 $failCount" -ForegroundColor $(if ($failCount -gt 0) { 'Red' } else { 'Green' })
+Write-Host ""
+Write-Host "User Removals:"
+Write-Host "  - Processed:          $($removalList.Count)" -ForegroundColor $(if ($removalList.Count -gt 0) { 'Red' } else { 'Green' })
+Write-Host "  - Successful:         $removedCount" -ForegroundColor $(if ($removedCount -gt 0) { 'Green' } else { 'Gray' })
+Write-Host "  - Failed:             $removeFailCount" -ForegroundColor $(if ($removeFailCount -gt 0) { 'Red' } else { 'Gray' })
+Write-Host ""
+Write-Host "Reminder Emails:"
+Write-Host "  - Needed:             $($reminderList.Count)" -ForegroundColor $(if ($reminderList.Count -gt 0) { 'Yellow' } else { 'Gray' })
+Write-Host "  - Sent:               $sentCount" -ForegroundColor $(if ($sentCount -gt 0) { 'Green' } else { 'Gray' })
+Write-Host "  - Failed:             $failCount" -ForegroundColor $(if ($failCount -gt 0) { 'Red' } else { 'Gray' })
 Write-Host "========================================`n" -ForegroundColor Cyan
 
 # Display detailed results
+if ($removalList.Count -gt 0) {
+    Write-Host "User Removal Details:" -ForegroundColor Red
+    $removalList | Format-Table -AutoSize Username, OldVMName, DaysOverdue, Removed, Success
+}
+
 if ($reminderList.Count -gt 0) {
-    Write-Host "Detailed Results:" -ForegroundColor Cyan
+    Write-Host "Reminder Email Details:" -ForegroundColor Cyan
     $reminderList | Format-Table -AutoSize Username, OldVMName, DaysRemaining, EmailSent, Success
 }
 
 # Show failures with details
-$failures = $reminderList | Where-Object { -not $_.Success }
-if ($failures.Count -gt 0) {
-    Write-Host "`nFailure Details:" -ForegroundColor Red
-    foreach ($failure in $failures) {
+$removalFailures = $removalList | Where-Object { -not $_.Success }
+if ($removalFailures.Count -gt 0) {
+    Write-Host "`nUser Removal Failures:" -ForegroundColor Red
+    foreach ($failure in $removalFailures) {
+        Write-Host "  ❌ $($failure.Username) ($($failure.OldVMName)): $($failure.ErrorMessage)" -ForegroundColor Red
+    }
+    Write-Host ""
+}
+
+$emailFailures = $reminderList | Where-Object { -not $_.Success }
+if ($emailFailures.Count -gt 0) {
+    Write-Host "`nEmail Failures:" -ForegroundColor Red
+    foreach ($failure in $emailFailures) {
         Write-Host "  ❌ $($failure.Username) ($($failure.OldVMName)): $($failure.ErrorMessage)" -ForegroundColor Red
     }
     Write-Host ""
 }
 
 # Export results to CSV
+if ($removalList.Count -gt 0) {
+    $removalFile = "migration-removals-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv"
+    $removalList | Export-Csv -Path $removalFile -NoTypeInformation
+    Write-Host "Removal results exported to: $removalFile" -ForegroundColor Yellow
+}
+
 if ($reminderList.Count -gt 0) {
     $resultFile = "migration-reminders-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv"
     $reminderList | Export-Csv -Path $resultFile -NoTypeInformation
-    Write-Host "Results exported to: $resultFile`n" -ForegroundColor Yellow
+    Write-Host "Reminder results exported to: $resultFile" -ForegroundColor Yellow
+}
+
+if ($removalList.Count -gt 0 -or $reminderList.Count -gt 0) {
+    Write-Host ""
 }
 
 if (-not $WhatIf) {
-    Write-Host "✅ Reminder email process completed!" -ForegroundColor Green
+    Write-Host "✅ Migration management process completed!" -ForegroundColor Green
 }
 else {
-    Write-Host "ℹ️  WhatIf mode completed. No emails were sent." -ForegroundColor Yellow
-    Write-Host "   Run without -WhatIf to send the reminder emails.`n" -ForegroundColor Yellow
+    Write-Host "ℹ️  WhatIf mode completed. No changes were made." -ForegroundColor Yellow
+    Write-Host "   Run without -WhatIf to apply changes (remove users and send emails).`n" -ForegroundColor Yellow
 }
