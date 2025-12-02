@@ -1,21 +1,21 @@
 // CMPivot Query: Windows Hello Biometric Hardware Detection
-// Detects fingerprint readers and IR cameras for Windows Hello
+// Detects fingerprint readers and IR cameras for Windows Hello (HP laptops)
 
-// Query for biometric devices (fingerprint readers)
 PnPDeviceDriver
-| where DeviceName contains "fingerprint"
-    or DeviceName contains "biometric"
-    or DeviceName contains "Goodix"
-    or DeviceName contains "Synaptics"
-    or DeviceName contains "Validity"
-    or DeviceName contains "Elan"
-    or DeviceName contains "AuthenTec"
+| where (Name contains "fingerprint" 
+    or Name contains "Goodix"
+    or Name contains "Synaptics"
+    or Name contains "Validity"
+    or Name contains "Elan"
+    or Name contains "AuthenTec"
     or DeviceID contains "VID_27C6"
     or DeviceID contains "VID_06CB"
     or DeviceID contains "VID_138A"
-    or DeviceID contains "VID_04F3"
-    or DeviceName contains "IR"
-    or DeviceName contains "infrared"
-    or DeviceName contains "RealSense"
-| project Device, DeviceName, Manufacturer, DeviceID, Status
+    or DeviceID contains "VID_04F3")
+    or (Name contains "Camera" and (Name contains "IR" or Name contains "infrared"))
+    or Name contains "RealSense"
+    or Name contains "HP HD Camera"
+    or ClassGuid == "{53D29EF7-377C-4D14-864B-EB3A85769359}"
+| where Status == "OK"
+| project Device, Name, Manufacturer, DeviceID
 | order by Device asc
