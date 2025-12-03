@@ -49,7 +49,20 @@ Param (
     [Switch]$TerminalServerMode = $false,
     
     [Parameter(Mandatory=$false)]
-    [Switch]$DisableLogging = $false
+    [Switch]$DisableLogging = $false,
+    
+    # Testing/Demo Parameters
+    [Parameter(Mandatory=$false)]
+    [Switch]$DemoMode = $false,
+    
+    [Parameter(Mandatory=$false)]
+    [int]$DemoUptimeDays = 8,
+    
+    [Parameter(Mandatory=$false)]
+    [int]$DemoMinutesToDeadline = 15,
+    
+    [Parameter(Mandatory=$false)]
+    [Switch]$SkipADCheck = $false
 )
 
 Try {
@@ -139,6 +152,10 @@ Try {
         
         Write-Log -Message "========================================" -Severity 1
         Write-Log -Message "Reboot Enforcement - Starting Check" -Severity 1
+        if ($DemoMode) {
+            Write-Log -Message "🎬 DEMO MODE ENABLED 🎬" -Severity 2
+            Write-Log -Message "Simulating: $DemoUptimeDays days uptime, $DemoMinutesToDeadline min to deadline" -Severity 2
+        }
         Write-Log -Message "========================================" -Severity 1
         
         #region Helper Functions
@@ -195,6 +212,11 @@ Try {
         function Test-RebootExemption {
             param([string]$GroupName)
             
+            if ($SkipADCheck) {
+                Write-Log -Message "Skipping AD check (SkipADCheck parameter)" -Severity 1
+                return $false
+            }
+            
             try {
                 $computerName = $env:COMPUTERNAME
                 
@@ -224,6 +246,11 @@ Try {
         }
         
         function Get-SystemUptimeDays {
+            if ($DemoMode) {
+                Write-Log -Message "DEMO MODE: Returning simulated uptime of $DemoUptimeDays days" -Severity 1
+                return $DemoUptimeDays
+            }
+            
             try {
                 $os = Get-CimInstance -ClassName Win32_OperatingSystem
                 $uptime = (Get-Date) - $os.LastBootUpTime
@@ -236,6 +263,12 @@ Try {
         }
         
         function Get-NextRebootDeadline {
+            if ($DemoMode) {
+                $deadline = (Get-Date).AddMinutes($DemoMinutesToDeadline)
+                Write-Log -Message "DEMO MODE: Deadline set to $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) ($DemoMinutesToDeadline minutes from now)" -Severity 1
+                return $deadline
+            }
+            
             $now = Get-Date
             $todayDeadline = Get-Date -Hour $rebootHour -Minute 0 -Second 0
             
