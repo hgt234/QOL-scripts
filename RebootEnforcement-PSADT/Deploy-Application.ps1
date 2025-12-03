@@ -51,18 +51,8 @@ Param (
     [Parameter(Mandatory=$false)]
     [Switch]$DisableLogging = $false,
     
-    # Testing/Demo Parameters
     [Parameter(Mandatory=$false)]
-    [Switch]$DemoMode = $false,
-    
-    [Parameter(Mandatory=$false)]
-    [int]$DemoUptimeDays = 8,
-    
-    [Parameter(Mandatory=$false)]
-    [int]$DemoMinutesToDeadline = 15,
-    
-    [Parameter(Mandatory=$false)]
-    [Switch]$SkipADCheck = $false
+    [Switch]$DemoMode = $false
 )
 
 Try {
@@ -127,12 +117,6 @@ Try {
     [String]$stateFilePath = "$envProgramData\RebootEnforcement\state.json"
     [String]$helperScriptPath = "$scriptDirectory\SupportFiles\Show-RebootToast.ps1"
     
-    # Extract custom parameters from bound parameters
-    [Boolean]$useDemoMode = $deployAppScriptParameters.ContainsKey('DemoMode') -and $deployAppScriptParameters['DemoMode']
-    [Int32]$demoUptime = if ($deployAppScriptParameters.ContainsKey('DemoUptimeDays')) { $deployAppScriptParameters['DemoUptimeDays'] } else { 8 }
-    [Int32]$demoDeadlineMinutes = if ($deployAppScriptParameters.ContainsKey('DemoMinutesToDeadline')) { $deployAppScriptParameters['DemoMinutesToDeadline'] } else { 15 }
-    [Boolean]$skipADExemptionCheck = $deployAppScriptParameters.ContainsKey('SkipADCheck') -and $deployAppScriptParameters['SkipADCheck']
-    
     ##*===============================================
     ##* END VARIABLE DECLARATION
     ##*===============================================
@@ -158,9 +142,8 @@ Try {
         
         Write-Log -Message "========================================" -Severity 1
         Write-Log -Message "Reboot Enforcement - Starting Check" -Severity 1
-        if ($useDemoMode) {
-            Write-Log -Message "🎬 DEMO MODE ENABLED 🎬" -Severity 2
-            Write-Log -Message "Simulating: $demoUptime days uptime, $demoDeadlineMinutes min to deadline" -Severity 2
+        if ($DemoMode) {
+            Write-Log -Message "DEMO MODE - Showing sample notifications" -Severity 2
         }
         Write-Log -Message "========================================" -Severity 1
         
@@ -218,8 +201,8 @@ Try {
         function Test-RebootExemption {
             param([string]$GroupName)
             
-            if ($skipADExemptionCheck) {
-                Write-Log -Message "Skipping AD check (SkipADCheck parameter)" -Severity 1
+            if ($DemoMode) {
+                Write-Log -Message "DEMO MODE - Skipping AD exemption check" -Severity 1
                 return $false
             }
             
@@ -252,9 +235,9 @@ Try {
         }
         
         function Get-SystemUptimeDays {
-            if ($useDemoMode) {
-                Write-Log -Message "DEMO MODE: Returning simulated uptime of $demoUptime days" -Severity 1
-                return $demoUptime
+            if ($DemoMode) {
+                Write-Log -Message "DEMO MODE - Simulating 8 days uptime" -Severity 1
+                return 8
             }
             
             try {
@@ -269,9 +252,9 @@ Try {
         }
         
         function Get-NextRebootDeadline {
-            if ($useDemoMode) {
-                $deadline = (Get-Date).AddMinutes($demoDeadlineMinutes)
-                Write-Log -Message "DEMO MODE: Deadline set to $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) ($demoDeadlineMinutes minutes from now)" -Severity 1
+            if ($DemoMode) {
+                $deadline = (Get-Date).AddMinutes(5)
+                Write-Log -Message "DEMO MODE - Deadline set to 5 minutes from now: $($deadline.ToString('HH:mm:ss'))" -Severity 1
                 return $deadline
             }
             
