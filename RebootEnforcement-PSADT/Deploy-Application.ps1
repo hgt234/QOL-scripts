@@ -114,8 +114,10 @@ Try {
     [Int32]$uptimeThresholdDays = 7
     [Int32]$rebootHour = 22  # 10 PM
     [Int32]$rebootWindowEnd = 5  # 5 AM
-    [String]$stateFilePath = "$envProgramData\RebootEnforcement\state.json"
-    [String]$helperScriptPath = "$scriptDirectory\SupportFiles\Show-RebootToast.ps1"
+    
+    # Build paths using PSADT environment variables (now available after toolkit loads)
+    [String]$stateFilePath = Join-Path $envProgramData "RebootEnforcement\state.json"
+    [String]$helperScriptPath = Join-Path $scriptDirectory "SupportFiles\Show-RebootToast.ps1"
     
     ##*===============================================
     ##* END VARIABLE DECLARATION
@@ -132,8 +134,8 @@ Try {
             # Not showing welcome - this runs frequently
         }
         
-        ## Show Progress Message
-        Show-InstallationProgress -StatusMessage "Checking system uptime..."
+        ## Show Progress Message (Disabled - using modern toast notifications instead)
+        # Show-InstallationProgress -StatusMessage "Checking system uptime..."
         
         ##*===============================================
         ##* INSTALLATION
@@ -152,16 +154,20 @@ Try {
         function Get-RebootState {
             try {
                 if (Test-Path $stateFilePath) {
-                    $json = Get-Content $stateFilePath -Raw | ConvertFrom-Json
+                    Write-Log -Message "Loading state from: $stateFilePath" -Severity 1
+                    $json = Get-Content $stateFilePath -Raw -ErrorAction Stop | ConvertFrom-Json
                     return @{
                         LastNotificationTime = if ($json.LastNotificationTime) { [DateTime]::Parse($json.LastNotificationTime) } else { $null }
                         ScheduledRebootTime = if ($json.ScheduledRebootTime) { [DateTime]::Parse($json.ScheduledRebootTime) } else { $null }
                         NotificationCount = if ($json.NotificationCount) { $json.NotificationCount } else { 0 }
                     }
                 }
+                else {
+                    Write-Log -Message "No existing state file found" -Severity 1
+                }
             }
             catch {
-                Write-Log -Message "Error loading state file: $_" -Severity 2
+                Write-Log -Message "Error loading state: $($_.Exception.Message)" -Severity 2
             }
             
             return @{
@@ -173,15 +179,16 @@ Try {
         
         function Set-RebootState {
             param(
-                [DateTime]$LastNotificationTime,
-                [DateTime]$ScheduledRebootTime,
+                [Nullable[DateTime]]$LastNotificationTime,
+                [Nullable[DateTime]]$ScheduledRebootTime,
                 [Int32]$NotificationCount
             )
             
             try {
                 $stateDir = Split-Path $stateFilePath -Parent
                 if (-not (Test-Path $stateDir)) {
-                    New-Item -Path $stateDir -ItemType Directory -Force | Out-Null
+                    Write-Log -Message "Creating state directory: $stateDir" -Severity 1
+                    New-Item -Path $stateDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
                 }
                 
                 $state = @{
@@ -190,11 +197,13 @@ Try {
                     NotificationCount = $NotificationCount
                 }
                 
-                $state | ConvertTo-Json | Set-Content $stateFilePath -Force
-                Write-Log -Message "State saved to JSON file" -Severity 1
+                Write-Log -Message "Writing state to: $stateFilePath" -Severity 1
+                $state | ConvertTo-Json | Set-Content $stateFilePath -Force -ErrorAction Stop
+                Write-Log -Message "State saved successfully" -Severity 1
             }
             catch {
-                Write-Log -Message "Error saving state: $_" -Severity 3
+                Write-Log -Message "Error saving state: $($_.Exception.Message)" -Severity 3
+                Write-Log -Message "Inner exception: $($_.Exception.InnerException.Message)" -Severity 3
             }
         }
         
@@ -283,12 +292,44 @@ Try {
             )
             
             try {
-                # Build arguments for helper script
-                $arguments = "-NotificationType `"$NotificationType`" -UptimeDays $UptimeDays -Deadline `"$($Deadline.ToString('o'))`" -MinutesRemaining $MinutesRemaining -StateFilePath `"$stateFilePath`""
-                
-                # Use PSADT's Execute-ProcessAsUser to show toast in user session
+                # Launch toast script in background process
                 Write-Log -Message "Showing toast notification: $NotificationType" -Severity 1
-                Execute-ProcessAsUser -Path "$PSHOME\powershell.exe" -Parameters "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$helperScriptPath`" $arguments" -Wait $false
+                
+                # Detect PowerShell executable (need PS7 for BurntToast)
+                $psExePath = if ($PSVersionTable.PSVersion.Major -ge 7) {
+                    # Running in PS7, use current executable
+                    (Get-Process -Id $PID).Path
+                } else {
+                    # Try to find PS7 installation
+                    if (Test-Path "C:\Program Files\PowerShell\7\pwsh.exe") {
+                        "C:\Program Files\PowerShell\7\pwsh.exe"
+                    } else {
+                        # Fallback to Windows PowerShell
+                        "PowerShell.exe"
+                    }
+                }
+                
+                Write-Log -Message "Using PowerShell executable: $psExePath" -Severity 1
+                Write-Log -Message "Helper script path: $helperScriptPath" -Severity 1
+                
+                # Build the script arguments as an array to avoid quoting issues
+                $scriptParams = @(
+                    '-ExecutionPolicy', 'Bypass'
+                    '-NoProfile'
+                    '-File', $helperScriptPath
+                    '-NotificationType', $NotificationType
+                    '-UptimeDays', $UptimeDays
+                    '-Deadline', $Deadline.ToString('o')
+                    '-MinutesRemaining', $MinutesRemaining
+                    '-StateFilePath', $stateFilePath
+                )
+                
+                Write-Log -Message "Script parameters: $($scriptParams -join ' ')" -Severity 1
+                
+                # Use Start-Process to launch (doesn't require SYSTEM context)
+                $process = Start-Process -FilePath $psExePath -ArgumentList $scriptParams -WindowStyle Hidden -PassThru -ErrorAction Stop
+                
+                Write-Log -Message "Started process ID: $($process.Id)" -Severity 1
                 
                 return $true
             }
@@ -386,7 +427,8 @@ Try {
         
         # Within final 90 minutes?
         if ($minutesUntilDeadline -le 90) {
-            if (-not $state.LastNotificationTime -or ((Get-Date) - $state.LastNotificationTime).TotalMinutes -ge 15) {
+            # In demo mode, always show notification
+            if ($DemoMode -or -not $state.LastNotificationTime -or ((Get-Date) - $state.LastNotificationTime).TotalMinutes -ge 15) {
                 Show-ToastToUser -NotificationType "FinalWarning" -UptimeDays $uptimeDays -Deadline $deadline -MinutesRemaining ([Math]::Ceiling($minutesUntilDeadline))
                 $state.LastNotificationTime = Get-Date
                 $state.NotificationCount++
@@ -397,7 +439,8 @@ Try {
             # Hourly reminders
             $hoursSinceLastNotification = if ($state.LastNotificationTime) { ((Get-Date) - $state.LastNotificationTime).TotalHours } else { 999 }
             
-            if ($hoursSinceLastNotification -ge 1) {
+            # In demo mode, always show notification
+            if ($DemoMode -or $hoursSinceLastNotification -ge 1) {
                 $notificationType = if (-not $state.LastNotificationTime) { "InitialWarning" } else { "HourlyReminder" }
                 Show-ToastToUser -NotificationType $notificationType -UptimeDays $uptimeDays -Deadline $deadline -MinutesRemaining ([Math]::Ceiling($minutesUntilDeadline))
                 $state.LastNotificationTime = Get-Date
