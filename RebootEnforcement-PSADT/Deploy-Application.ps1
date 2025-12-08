@@ -262,8 +262,8 @@ Try {
         
         function Get-NextRebootDeadline {
             if ($DemoMode) {
-                $deadline = (Get-Date).AddMinutes(5)
-                Write-Log -Message "DEMO MODE - Deadline set to 5 minutes from now: $($deadline.ToString('HH:mm:ss'))" -Severity 1
+                $deadline = (Get-Date).AddMinutes(60)
+                Write-Log -Message "DEMO MODE - Deadline set to 60 minutes from now: $($deadline.ToString('HH:mm:ss'))" -Severity 1
                 return $deadline
             }
             
@@ -281,62 +281,6 @@ Try {
         function Test-InRebootWindow {
             $currentHour = (Get-Date).Hour
             return ($currentHour -ge $rebootHour -or $currentHour -lt $rebootWindowEnd)
-        }
-        
-        function Show-ToastToUser {
-            param(
-                [string]$NotificationType,
-                [int]$UptimeDays,
-                [DateTime]$Deadline,
-                [int]$MinutesRemaining
-            )
-            
-            try {
-                # Launch toast script in background process
-                Write-Log -Message "Showing toast notification: $NotificationType" -Severity 1
-                
-                # Detect PowerShell executable (need PS7 for BurntToast)
-                $psExePath = if ($PSVersionTable.PSVersion.Major -ge 7) {
-                    # Running in PS7, use current executable
-                    (Get-Process -Id $PID).Path
-                } else {
-                    # Try to find PS7 installation
-                    if (Test-Path "C:\Program Files\PowerShell\7\pwsh.exe") {
-                        "C:\Program Files\PowerShell\7\pwsh.exe"
-                    } else {
-                        # Fallback to Windows PowerShell
-                        "PowerShell.exe"
-                    }
-                }
-                
-                Write-Log -Message "Using PowerShell executable: $psExePath" -Severity 1
-                Write-Log -Message "Helper script path: $helperScriptPath" -Severity 1
-                
-                # Build the script arguments as an array to avoid quoting issues
-                $scriptParams = @(
-                    '-ExecutionPolicy', 'Bypass'
-                    '-NoProfile'
-                    '-File', $helperScriptPath
-                    '-NotificationType', $NotificationType
-                    '-UptimeDays', $UptimeDays
-                    '-Deadline', $Deadline.ToString('o')
-                    '-MinutesRemaining', $MinutesRemaining
-                    '-StateFilePath', $stateFilePath
-                )
-                
-                Write-Log -Message "Script parameters: $($scriptParams -join ' ')" -Severity 1
-                
-                # Use Start-Process to launch (doesn't require SYSTEM context)
-                $process = Start-Process -FilePath $psExePath -ArgumentList $scriptParams -WindowStyle Hidden -PassThru -ErrorAction Stop
-                
-                Write-Log -Message "Started process ID: $($process.Id)" -Severity 1
-                
-                return $true
-            }
-            catch {
-                Write-Log -Message "Error showing toast: $_" -Severity 3
-                return $false
-            }
         }
         
         #endregion
@@ -367,52 +311,7 @@ Try {
         # Load state
         $state = Get-RebootState
         
-        # Check for scheduled reboot
-        if ($state.ScheduledRebootTime) {
-            Write-Log -Message "User scheduled reboot: $($state.ScheduledRebootTime.ToString('yyyy-MM-dd HH:mm:ss'))" -Severity 1
-            
-            # Validate scheduled time
-            if ($state.ScheduledRebootTime -le (Get-Date)) {
-                Write-Log -Message "Scheduled time reached - initiating reboot" -Severity 2
-                
-                Show-InstallationRestartPrompt -CountdownSeconds 60 -CountdownNoHideSeconds 60
-                Exit-Script -ExitCode 1641  # Reboot exit code
-            }
-            elseif ($state.ScheduledRebootTime -gt $deadline) {
-                Write-Log -Message "Scheduled time after deadline - clearing" -Severity 2
-                $state.ScheduledRebootTime = $null
-                Set-RebootState -LastNotificationTime $state.LastNotificationTime -ScheduledRebootTime $null -NotificationCount $state.NotificationCount
-            }
-            else {
-                # Check for countdown warnings
-                $minutesUntilScheduled = ($state.ScheduledRebootTime - (Get-Date)).TotalMinutes
-                
-                if ($minutesUntilScheduled -le 10 -and $minutesUntilScheduled -gt 5) {
-                    if (-not $state.LastNotificationTime -or ((Get-Date) - $state.LastNotificationTime).TotalMinutes -ge 4) {
-                        Show-ToastToUser -NotificationType "ScheduledCountdown" -UptimeDays $uptimeDays -Deadline $state.ScheduledRebootTime -MinutesRemaining 10
-                        $state.LastNotificationTime = Get-Date
-                        Set-RebootState -LastNotificationTime $state.LastNotificationTime -ScheduledRebootTime $state.ScheduledRebootTime -NotificationCount $state.NotificationCount
-                    }
-                }
-                elseif ($minutesUntilScheduled -le 5 -and $minutesUntilScheduled -gt 1) {
-                    if (-not $state.LastNotificationTime -or ((Get-Date) - $state.LastNotificationTime).TotalMinutes -ge 3) {
-                        Show-ToastToUser -NotificationType "ScheduledCountdown" -UptimeDays $uptimeDays -Deadline $state.ScheduledRebootTime -MinutesRemaining 5
-                        $state.LastNotificationTime = Get-Date
-                        Set-RebootState -LastNotificationTime $state.LastNotificationTime -ScheduledRebootTime $state.ScheduledRebootTime -NotificationCount $state.NotificationCount
-                    }
-                }
-                elseif ($minutesUntilScheduled -le 1) {
-                    Show-ToastToUser -NotificationType "ScheduledCountdown" -UptimeDays $uptimeDays -Deadline $state.ScheduledRebootTime -MinutesRemaining 1
-                    Start-Sleep -Seconds 60
-                    Show-InstallationRestartPrompt -CountdownSeconds 60 -CountdownNoHideSeconds 60
-                    Exit-Script -ExitCode 1641
-                }
-                
-                Exit-Script -ExitCode 0
-            }
-        }
-        
-        # No scheduled reboot - check deadline
+        # Check deadline
         if ($minutesUntilDeadline -le 0) {
             if (Test-InRebootWindow) {
                 Write-Log -Message "Deadline reached and in reboot window - forcing reboot" -Severity 2
@@ -427,25 +326,72 @@ Try {
         
         # Within final 90 minutes?
         if ($minutesUntilDeadline -le 90) {
-            # In demo mode, always show notification
-            if ($DemoMode -or -not $state.LastNotificationTime -or ((Get-Date) - $state.LastNotificationTime).TotalMinutes -ge 15) {
-                Show-ToastToUser -NotificationType "FinalWarning" -UptimeDays $uptimeDays -Deadline $deadline -MinutesRemaining ([Math]::Ceiling($minutesUntilDeadline))
-                $state.LastNotificationTime = Get-Date
-                $state.NotificationCount++
-                Set-RebootState -LastNotificationTime $state.LastNotificationTime -ScheduledRebootTime $state.ScheduledRebootTime -NotificationCount $state.NotificationCount
+            # Final warning - show PSADT prompt with countdown and restart option
+            Write-Log -Message "Final warning period - showing countdown prompt" -Severity 2
+            
+            if ($DemoMode) {
+                # In demo mode, allow dismissing the urgent warning
+                $promptResult = Show-InstallationPrompt `
+                    -Title "URGENT: Restart Required Now" `
+                    -Message "Your system must restart in $([Math]::Ceiling($minutesUntilDeadline)) minutes (at $($deadline.ToString('h:mm tt'))).`n`nSave all work immediately. Your computer will restart automatically if you do not take action." `
+                    -ButtonRightText "Restart Now" `
+                    -ButtonLeftText "OK (Demo Only)" `
+                    -Icon Exclamation `
+                    -Timeout 300 `
+                    -ExitOnTimeout $false
+                
+                if ($promptResult -eq "Restart Now") {
+                    Write-Log -Message "User chose to restart now" -Severity 1
+                    Show-InstallationRestartPrompt -CountdownSeconds 60 -CountdownNoHideSeconds 60
+                    Exit-Script -ExitCode 1641
+                }
+                else {
+                    Write-Log -Message "DEMO MODE - User dismissed urgent warning" -Severity 1
+                }
             }
+            else {
+                # Production mode - only allow restart or remind
+                $promptResult = Show-InstallationPrompt `
+                    -Title "URGENT: Restart Required Now" `
+                    -Message "Your system must restart in $([Math]::Ceiling($minutesUntilDeadline)) minutes (at $($deadline.ToString('h:mm tt'))).`n`nSave all work immediately. Your computer will restart automatically if you do not take action." `
+                    -ButtonRightText "Restart Now" `
+                    -ButtonMiddleText "Remind Me in 15 Minutes" `
+                    -Icon Exclamation `
+                    -Timeout 300 `
+                    -ExitOnTimeout $false
+                
+                if ($promptResult -eq "Restart Now") {
+                    Write-Log -Message "User chose to restart now" -Severity 1
+                    Show-InstallationRestartPrompt -CountdownSeconds 60 -CountdownNoHideSeconds 60
+                    Exit-Script -ExitCode 1641
+                }
+            }
+            
+            $state.LastNotificationTime = Get-Date
+            $state.NotificationCount++
+            Set-RebootState -LastNotificationTime $state.LastNotificationTime -ScheduledRebootTime $state.ScheduledRebootTime -NotificationCount $state.NotificationCount
         }
         else {
-            # Hourly reminders
+            # Standard notification - inform user about reboot requirement
             $hoursSinceLastNotification = if ($state.LastNotificationTime) { ((Get-Date) - $state.LastNotificationTime).TotalHours } else { 999 }
             
-            # In demo mode, always show notification
-            if ($DemoMode -or $hoursSinceLastNotification -ge 1) {
-                $notificationType = if (-not $state.LastNotificationTime) { "InitialWarning" } else { "HourlyReminder" }
-                Show-ToastToUser -NotificationType $notificationType -UptimeDays $uptimeDays -Deadline $deadline -MinutesRemaining ([Math]::Ceiling($minutesUntilDeadline))
+            # Show notification every 4 hours (or always in demo mode)
+            if ($DemoMode -or $hoursSinceLastNotification -ge 4) {
+                Write-Log -Message "Showing reboot notification" -Severity 1
+                
+                $hoursRemaining = [Math]::Round($minutesUntilDeadline / 60, 1)
+                Show-InstallationPrompt `
+                    -Title "Proactive System Maintenance" `
+                    -Message "Your computer has been online for $uptimeDays days. We perform proactive reboots on systems running over 7 days to maintain optimal performance and stability.`n`nPlease restart at your convenience, or your system will automatically restart at $($deadline.ToString('h:mm tt')) today." `
+                    -ButtonRightText "OK" `
+                    -Icon Information `
+                    -Timeout 300 `
+                    -ExitOnTimeout $false
+                
+                Write-Log -Message "User acknowledged notification" -Severity 1
                 $state.LastNotificationTime = Get-Date
                 $state.NotificationCount++
-                Set-RebootState -LastNotificationTime $state.LastNotificationTime -ScheduledRebootTime $state.ScheduledRebootTime -NotificationCount $state.NotificationCount
+                Set-RebootState -LastNotificationTime $state.LastNotificationTime -ScheduledRebootTime $null -NotificationCount $state.NotificationCount
             }
         }
         

@@ -1,0 +1,31 @@
+Windows VM Migration: From Windows 10 to Windows 11
+Overview
+High-level users have been provisioned with a new Windows 11 VM to replace their existing Windows 10 VM. Users are expected to migrate their workflows and data to the new VM. During the transition, users should run both VMs side by side to ensure a smooth handover. Access to the old Windows 10 VM will be revoked on the specified deadline unless a strong justification is provided.
+Key Migration Guidance
+
+Side-by-Side Usage: Advise users to operate both VMs concurrently during the migration period to test and verify functionality.
+Application Installation: All required applications can be installed on the new VM via the Software Center.
+Data Transfer: Recommend using OneDrive for transferring files and data from the old VM to the new one. Network drives will be accessible on both systems.
+Application Configuration: If users have questions about specific app configurations, collaborate with Subject Matter Experts (SMEs) via Teams for accurate guidance.
+
+Troubleshooting Notes
+
+This migration process is almost identical to a physical hardware refresh. Troubleshoot issues accordingly.
+
+Anticipated User Questions and Responses
+
+Q: How do I access the new Windows 11 VM?
+A: The new VM should be available in your AVD remote desktop app.
+Q: Can I install my applications on the new VM?
+A: Yes, use the Software Center to install applications.
+Q: How should I transfer my files?
+A: Use OneDrive for secure and efficient transfer. Network drives are available on both VMs for shared access.
+Q: What if an application doesn't work or needs specific setup?
+A: Test the app on the new VM. If issues arise, consult SMEs on Teams for app-specific configuration details.
+Q: When will the old VM be removed?
+A: Access will be revoked on the deadline. If extension is needed, provide strong justification via an incident ticket.
+
+Escalation Procedures
+
+For requests to retain the old VM beyond the deadline, require strong justification and forward the incident (INC) to the End User Computing (EUC) team.
+Escalate any technical issues or uncertainties to SMEs or EUC as appropriate.

@@ -217,78 +217,79 @@ switch ($NotificationType) {
     'InitialWarning' {
         $title = "Reboot Required"
         $hoursToDeadline = [Math]::Round(($Deadline - (Get-Date)).TotalHours, 1)
-        $message = "Your computer has been running for $UptimeDays days.`n`nA reboot will be forced at $($Deadline.ToString('h:mm tt')) ($hoursToDeadline hours from now).`n`nClick 'Schedule' to choose a convenient time, or your computer will restart automatically at the deadline."
-        
-        # Schedule button - triggers time picker
-        $scheduleAction = {
-            $scheduledTime = Show-RebootScheduler -Deadline $Deadline
-            if ($scheduledTime) {
-                Set-RebootState -ScheduledRebootTime $scheduledTime
-                [System.Windows.Forms.MessageBox]::Show("Reboot scheduled for $($scheduledTime.ToString('h:mm tt'))", "Scheduled", 'OK', 'Information')
-            }
-        }
-        
-        # Note: BurntToast buttons can't directly execute scriptblocks, so we use Arguments
-        # The Deploy-Application.ps1 will detect the scheduled time from JSON on next run
-        $buttons += New-BTButton -Content "Schedule Reboot" -Arguments "action:schedule"
-        $buttons += New-BTButton -Content "Remind Me Later" -Arguments "action:dismiss"
+        $message = "Your computer has been running for $UptimeDays days. A reboot will be forced at $($Deadline.ToString('h:mm tt')) ($hoursToDeadline hours from now). Please save your work and restart when convenient."
     }
     
     'HourlyReminder' {
         $title = "Reboot Reminder"
         $hoursToDeadline = [Math]::Round(($Deadline - (Get-Date)).TotalHours, 1)
-        $message = "Reminder: Forced reboot at $($Deadline.ToString('h:mm tt')) ($hoursToDeadline hours).`n`nCurrent uptime: $UptimeDays days`n`nSchedule a convenient time or your computer will restart at the deadline."
-        
-        $buttons += New-BTButton -Content "Schedule Reboot" -Arguments "action:schedule"
-        $buttons += New-BTButton -Content "OK" -Arguments "action:dismiss"
+        $message = "Reminder: Forced reboot at $($Deadline.ToString('h:mm tt')) ($hoursToDeadline hours). Current uptime: $UptimeDays days. Please save your work and restart when convenient."
     }
     
     'FinalWarning' {
         $title = "URGENT: Reboot in $MinutesRemaining Minutes"
-        $message = "Your computer will restart in $MinutesRemaining minutes at $($Deadline.ToString('h:mm tt')).`n`nSAVE YOUR WORK IMMEDIATELY`n`nClick 'Restart Now' to restart immediately, or wait for automatic restart."
-        
-        $buttons += New-BTButton -Content "Restart Now" -Arguments "action:rebootnow"
-        $buttons += New-BTButton -Content "OK" -Arguments "action:dismiss"
+        $message = "Your computer will restart in $MinutesRemaining minutes at $($Deadline.ToString('h:mm tt')). SAVE YOUR WORK IMMEDIATELY!"
     }
     
     'ScheduledCountdown' {
         $title = "Scheduled Reboot in $MinutesRemaining Minutes"
-        $message = "Your scheduled reboot will begin in $MinutesRemaining minutes.`n`nPlease save your work now`n`nClick 'Restart Now' to restart immediately."
-        
-        $buttons += New-BTButton -Content "Restart Now" -Arguments "action:rebootnow"
-        $buttons += New-BTButton -Content "OK" -Arguments "action:dismiss"
+        $message = "Your scheduled reboot will begin in $MinutesRemaining minutes. Please save your work now."
     }
 }
 
-# Handle button clicks via protocol activation
-Register-ScheduledTask -TaskName "RebootEnforcement_ScheduleHandler" -Action (New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -Command `"& { if ('$($args[0])' -eq 'action:schedule') { & '$PSCommandPath' -ShowScheduler -Deadline '$($Deadline.ToString('o'))' -StateFilePath '$StateFilePath' } }`"") -Trigger (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1)) -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -DeleteExpiredTaskAfter 00:00:01) -Force -ErrorAction SilentlyContinue
-
-# Special mode for showing scheduler
-if ($args -contains '-ShowScheduler') {
-    $scheduledTime = Show-RebootScheduler -Deadline $Deadline
-    if ($scheduledTime) {
-        Set-RebootState -ScheduledRebootTime $scheduledTime
-        [System.Windows.Forms.MessageBox]::Show("Reboot scheduled for $($scheduledTime.ToString('h:mm tt'))", "Scheduled", 'OK', 'Information')
-    }
-    exit 0
-}
-
-# Create and show toast
+# Create and show toast with interactive buttons
 try {
-    $text1 = New-BTText -Text $title
-    $text2 = New-BTText -Text $message
+    # Log what we're about to do
+    $logFile = "$env:TEMP\RebootToast-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+    "Starting toast script at $(Get-Date)" | Out-File $logFile -Append
+    "NotificationType: $NotificationType" | Out-File $logFile -Append
+    "Title: $title" | Out-File $logFile -Append
+    "Message: $message" | Out-File $logFile -Append
+    "User: $env:USERNAME" | Out-File $logFile -Append
     
-    $binding = New-BTBinding -Children $text1, $text2 -AppLogoOverride (New-BTImage -Source "$env:SystemRoot\System32\shell32.dll" -AppLogoOverride -Crop Circle)
-    $visual = New-BTVisual -BindingGeneric $binding
-    
-    $content = New-BTContent -Visual $visual -Actions $buttons -ActivationType Protocol
-    
-    Submit-BTNotification -Content $content -AppId $appId
+    # Create toast with interactive buttons (except for imminent ScheduledCountdown)
+    if ($NotificationType -ne 'ScheduledCountdown' -and $NotificationType -ne 'FinalWarning') {
+        "Adding interactive buttons for $NotificationType" | Out-File $logFile -Append
+        
+        # Create buttons for initial warning and hourly reminders
+        $btnReschedule = New-BTButton -Content 'Reschedule' -Arguments "rebootaction:reschedule:$StateFilePath|$($Deadline.ToString('o'))" -ActivationType Protocol
+        $btnRebootNow = New-BTButton -Content 'Restart Now' -Arguments 'rebootaction:reboot:now' -ActivationType Protocol
+        
+        # Create action group from buttons
+        $actionGroup = New-BTAction -Buttons $btnReschedule, $btnRebootNow
+        
+        # Create binding with text
+        $binding = New-BTBinding -Children @(
+            New-BTText -Text $title
+            New-BTText -Text $message
+        )
+        
+        $visual = New-BTVisual -BindingGeneric $binding
+        $content = New-BTContent -Visual $visual -Actions $actionGroup
+        
+        # Submit the toast
+        Submit-BTNotification -Content $content
+        
+        "Toast with buttons shown successfully" | Out-File $logFile -Append
+    }
+    else {
+        # Final warning or countdown - just show urgent message
+        "Showing urgent toast without buttons ($NotificationType)" | Out-File $logFile -Append
+        New-BurntToastNotification -Text $title, $message -Sound 'Alarm'
+        "Urgent toast shown successfully" | Out-File $logFile -Append
+    }
     
     Write-Host "Toast notification shown: $NotificationType"
+    
+    # Wait to ensure toast is displayed
+    Start-Sleep -Seconds 2
+    
+    "Exiting at $(Get-Date)" | Out-File $logFile -Append
     exit 0
 }
 catch {
-    Write-Error "Error showing toast: $_"
+    $errorMsg = "Error showing toast: $($_.Exception.Message)`n$($_.ScriptStackTrace)"
+    Write-Error $errorMsg
+    $errorMsg | Out-File $logFile -Append
     exit 1
 }
