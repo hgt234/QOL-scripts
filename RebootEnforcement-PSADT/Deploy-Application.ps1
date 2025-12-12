@@ -215,59 +215,26 @@ Try {
                 $computerName = $env:COMPUTERNAME
                 Write-Log -Message "Checking exemption for computer: $computerName" -Severity 1
                 
-                # Get domain information using ADSI
-                $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
-                $domainDN = $domain.GetDirectoryEntry().distinguishedName
-                Write-Log -Message "Domain DN: $domainDN" -Severity 1
-                
-                # Search for the computer object using ADSI
-                $searcher = New-Object System.DirectoryServices.DirectorySearcher
-                $searcher.SearchRoot = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$domainDN")
-                $searcher.Filter = "(&(objectClass=computer)(name=$computerName))"
-                $searcher.PropertiesToLoad.Add("memberOf") | Out-Null
-                $searcher.PropertiesToLoad.Add("distinguishedName") | Out-Null
-                
-                $result = $searcher.FindOne()
-                
-                if ($null -eq $result) {
-                    Write-Log -Message "Computer object not found in AD" -Severity 2
-                    
-                    # In demo mode, continue anyway
-                    if ($DemoMode -ne 'Off') {
-                        Write-Log -Message "DEMO MODE - Ignoring computer not found for demo purposes" -Severity 2
-                        return $false
-                    }
-                    return $false
-                }
-                
-                Write-Log -Message "Found computer: $($result.Properties['distinguishedName'][0])" -Severity 1
-                
-                # Get memberOf attribute
-                $memberOf = $result.Properties["memberOf"]
+                # Search for the computer object using ADSI and get group memberships
+                $memberOf = ([adsisearcher]"(&(objectCategory=computer)(cn=$computerName))").FindOne().Properties.memberOf -replace '^CN=([^,]+).+$', '$1'
                 
                 if ($null -ne $memberOf -and $memberOf.Count -gt 0) {
                     Write-Log -Message "Computer is member of $($memberOf.Count) group(s)" -Severity 1
                     
                     # Log all groups for debugging
-                    foreach ($groupDN in $memberOf) {
-                        Write-Log -Message "  Group DN: $groupDN" -Severity 1
+                    foreach ($group in $memberOf) {
+                        Write-Log -Message "  Group: $group" -Severity 1
                         
-                        # Extract CN from DN (e.g., "CN=RebootExemption,OU=Groups,DC=domain,DC=com")
-                        if ($groupDN -match "^CN=([^,]+)") {
-                            $groupCN = $matches[1]
-                            Write-Log -Message "  Group CN: $groupCN" -Severity 1
+                        if ($group -eq $GroupName) {
+                            Write-Log -Message "Computer is exempt (member of $GroupName)" -Severity 1
                             
-                            if ($groupCN -eq $GroupName) {
-                                Write-Log -Message "Computer is exempt (member of $GroupName)" -Severity 1
-                                
-                                # In demo mode, log but ignore
-                                if ($DemoMode -ne 'Off') {
-                                    Write-Log -Message "DEMO MODE - Ignoring exemption status for demo purposes" -Severity 2
-                                    return $false
-                                }
-                                
-                                return $true
+                            # In demo mode, log but ignore
+                            if ($DemoMode -ne 'Off') {
+                                Write-Log -Message "DEMO MODE - Ignoring exemption status for demo purposes" -Severity 2
+                                return $false
                             }
+                            
+                            return $true
                         }
                     }
                     
