@@ -214,18 +214,46 @@ Try {
             try {
                 $computerName = $env:COMPUTERNAME
                 Write-Log -Message "Checking exemption for computer: $computerName" -Severity 1
+                Write-Log -Message "Looking for group: $GroupName" -Severity 1
                 
-                # Search for the computer object using ADSI and get group memberships
-                $memberOf = ([adsisearcher]"(&(objectCategory=computer)(cn=$computerName))").FindOne().Properties.memberOf -replace '^CN=([^,]+).+$', '$1'
+                # Search for the computer object using ADSI
+                $computerObject = ([adsisearcher]"(&(objectCategory=computer)(cn=$computerName))").FindOne()
                 
-                if ($null -ne $memberOf -and $memberOf.Count -gt 0) {
-                    Write-Log -Message "Computer is member of $($memberOf.Count) group(s)" -Severity 1
+                if ($null -eq $computerObject) {
+                    Write-Log -Message "Computer object not found in AD" -Severity 2
                     
-                    # Log all groups for debugging
-                    foreach ($group in $memberOf) {
-                        Write-Log -Message "  Group: $group" -Severity 1
+                    if ($DemoMode -ne 'Off') {
+                        Write-Log -Message "DEMO MODE - Ignoring computer not found for demo purposes" -Severity 2
+                        return $false
+                    }
+                    return $false
+                }
+                
+                # Get raw memberOf values
+                $rawMemberOf = $computerObject.Properties.memberOf
+                
+                if ($null -eq $rawMemberOf -or $rawMemberOf.Count -eq 0) {
+                    Write-Log -Message "Computer is not a member of any groups (memberOf attribute is empty)" -Severity 1
+                    
+                    if ($DemoMode -ne 'Off') {
+                        Write-Log -Message "DEMO MODE - Ignoring exemption status for demo purposes" -Severity 2
+                        return $false
+                    }
+                    return $false
+                }
+                
+                Write-Log -Message "Computer is member of $($rawMemberOf.Count) group(s)" -Severity 1
+                
+                # Process each group DN and extract CN
+                foreach ($groupDN in $rawMemberOf) {
+                    Write-Log -Message "  Raw DN: $groupDN" -Severity 1
+                    
+                    # Extract CN from DN using regex
+                    if ($groupDN -match '^CN=([^,]+)') {
+                        $groupCN = $matches[1]
+                        Write-Log -Message "  Extracted CN: $groupCN" -Severity 1
                         
-                        if ($group -eq $GroupName) {
+                        if ($groupCN -eq $GroupName) {
                             Write-Log -Message "Computer is exempt (member of $GroupName)" -Severity 1
                             
                             # In demo mode, log but ignore
@@ -237,12 +265,12 @@ Try {
                             return $true
                         }
                     }
-                    
-                    Write-Log -Message "Computer is not a member of $GroupName" -Severity 1
+                    else {
+                        Write-Log -Message "  WARNING: Could not extract CN from DN" -Severity 2
+                    }
                 }
-                else {
-                    Write-Log -Message "Computer is not a member of any groups (memberOf attribute is empty)" -Severity 1
-                }
+                
+                Write-Log -Message "Computer is not a member of '$GroupName'" -Severity 1
                 
                 # In demo mode, log the result but always return false to continue demo
                 if ($DemoMode -ne 'Off') {
