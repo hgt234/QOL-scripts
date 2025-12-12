@@ -1,0 +1,16 @@
+# Ignore entire PSADT framework except for customized files
+RebootEnforcement-PSADT/AppDeployToolkit/
+
+# Include only our customizations
+!RebootEnforcement-PSADT/Deploy-Application.ps1
+!RebootEnforcement-PSADT/Config/
+!RebootEnforcement-PSADT/SupportFiles/
+!RebootEnforcement-PSADT/README.md
+!RebootEnforcement-PSADT/Strings/
+
+# Ignore framework executables
+RebootEnforcement-PSADT/Deploy-Application.exe
+
+# Ignore default assets and files folders (empty placeholders)
+RebootEnforcement-PSADT/Assets/
+RebootEnforcement-PSADT/Files/
