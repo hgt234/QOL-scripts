@@ -222,36 +222,59 @@ Try {
                 
                 # Search for the computer object using ADSI
                 $searcher = New-Object System.DirectoryServices.DirectorySearcher
-                $searcher.SearchRoot = "LDAP://$domainDN"
-                $searcher.Filter = "(&(objectClass=computer)(cn=$computerName))"
+                $searcher.SearchRoot = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$domainDN")
+                $searcher.Filter = "(&(objectClass=computer)(name=$computerName))"
                 $searcher.PropertiesToLoad.Add("memberOf") | Out-Null
+                $searcher.PropertiesToLoad.Add("distinguishedName") | Out-Null
                 
                 $result = $searcher.FindOne()
                 
                 if ($null -eq $result) {
                     Write-Log -Message "Computer object not found in AD" -Severity 2
+                    
+                    # In demo mode, continue anyway
+                    if ($DemoMode -ne 'Off') {
+                        Write-Log -Message "DEMO MODE - Ignoring computer not found for demo purposes" -Severity 2
+                        return $false
+                    }
                     return $false
                 }
                 
+                Write-Log -Message "Found computer: $($result.Properties['distinguishedName'][0])" -Severity 1
+                
+                # Get memberOf attribute
                 $memberOf = $result.Properties["memberOf"]
                 
-                if ($memberOf.Count -gt 0) {
-                    Write-Log -Message "Computer is member of $($memberOf.Count) groups" -Severity 1
+                if ($null -ne $memberOf -and $memberOf.Count -gt 0) {
+                    Write-Log -Message "Computer is member of $($memberOf.Count) group(s)" -Severity 1
                     
+                    # Log all groups for debugging
                     foreach ($groupDN in $memberOf) {
+                        Write-Log -Message "  Group DN: $groupDN" -Severity 1
+                        
                         # Extract CN from DN (e.g., "CN=RebootExemption,OU=Groups,DC=domain,DC=com")
-                        if ($groupDN -match "CN=([^,]+)") {
+                        if ($groupDN -match "^CN=([^,]+)") {
                             $groupCN = $matches[1]
+                            Write-Log -Message "  Group CN: $groupCN" -Severity 1
                             
                             if ($groupCN -eq $GroupName) {
                                 Write-Log -Message "Computer is exempt (member of $GroupName)" -Severity 1
+                                
+                                # In demo mode, log but ignore
+                                if ($DemoMode -ne 'Off') {
+                                    Write-Log -Message "DEMO MODE - Ignoring exemption status for demo purposes" -Severity 2
+                                    return $false
+                                }
+                                
                                 return $true
                             }
                         }
                     }
+                    
+                    Write-Log -Message "Computer is not a member of $GroupName" -Severity 1
                 }
                 else {
-                    Write-Log -Message "Computer is not a member of any groups" -Severity 1
+                    Write-Log -Message "Computer is not a member of any groups (memberOf attribute is empty)" -Severity 1
                 }
                 
                 # In demo mode, log the result but always return false to continue demo
