@@ -52,7 +52,8 @@ Param (
     [Switch]$DisableLogging = $false,
     
     [Parameter(Mandatory=$false)]
-    [Switch]$DemoMode = $false
+    [ValidateSet('Off', 'Standard', 'Urgent', 'Deadline', 'OutsideWindow')]
+    [String]$DemoMode = 'Off'
 )
 
 Try {
@@ -144,8 +145,8 @@ Try {
         
         Write-Log -Message "========================================" -Severity 1
         Write-Log -Message "Reboot Enforcement - Starting Check" -Severity 1
-        if ($DemoMode) {
-            Write-Log -Message "DEMO MODE - Showing sample notifications" -Severity 2
+        if ($DemoMode -ne 'Off') {
+            Write-Log -Message "DEMO MODE: $DemoMode - Simulating $DemoMode scenario" -Severity 2
         }
         Write-Log -Message "========================================" -Severity 1
         
@@ -210,41 +211,72 @@ Try {
         function Test-RebootExemption {
             param([string]$GroupName)
             
-            if ($DemoMode) {
-                Write-Log -Message "DEMO MODE - Skipping AD exemption check" -Severity 1
-                return $false
-            }
-            
             try {
                 $computerName = $env:COMPUTERNAME
+                Write-Log -Message "Checking exemption for computer: $computerName" -Severity 1
                 
-                if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
-                    Write-Log -Message "ActiveDirectory module not available - skipping exemption check" -Severity 2
+                # Get domain information using ADSI
+                $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+                $domainDN = $domain.GetDirectoryEntry().distinguishedName
+                Write-Log -Message "Domain DN: $domainDN" -Severity 1
+                
+                # Search for the computer object using ADSI
+                $searcher = New-Object System.DirectoryServices.DirectorySearcher
+                $searcher.SearchRoot = "LDAP://$domainDN"
+                $searcher.Filter = "(&(objectClass=computer)(cn=$computerName))"
+                $searcher.PropertiesToLoad.Add("memberOf") | Out-Null
+                
+                $result = $searcher.FindOne()
+                
+                if ($null -eq $result) {
+                    Write-Log -Message "Computer object not found in AD" -Severity 2
                     return $false
                 }
                 
-                Import-Module ActiveDirectory -ErrorAction Stop
-                $computer = Get-ADComputer -Identity $computerName -Properties MemberOf -ErrorAction Stop
+                $memberOf = $result.Properties["memberOf"]
                 
-                if ($computer.MemberOf) {
-                    foreach ($group in $computer.MemberOf) {
-                        if ($group -like "*$GroupName*") {
-                            Write-Log -Message "Computer is exempt (member of $GroupName)" -Severity 1
-                            return $true
+                if ($memberOf.Count -gt 0) {
+                    Write-Log -Message "Computer is member of $($memberOf.Count) groups" -Severity 1
+                    
+                    foreach ($groupDN in $memberOf) {
+                        # Extract CN from DN (e.g., "CN=RebootExemption,OU=Groups,DC=domain,DC=com")
+                        if ($groupDN -match "CN=([^,]+)") {
+                            $groupCN = $matches[1]
+                            
+                            if ($groupCN -eq $GroupName) {
+                                Write-Log -Message "Computer is exempt (member of $GroupName)" -Severity 1
+                                return $true
+                            }
                         }
                     }
+                }
+                else {
+                    Write-Log -Message "Computer is not a member of any groups" -Severity 1
+                }
+                
+                # In demo mode, log the result but always return false to continue demo
+                if ($DemoMode -ne 'Off') {
+                    Write-Log -Message "DEMO MODE - Ignoring exemption status for demo purposes" -Severity 2
+                    return $false
                 }
                 
                 return $false
             }
             catch {
-                Write-Log -Message "Error checking exemption: $_" -Severity 2
+                Write-Log -Message "Error checking exemption via ADSI: $($_.Exception.Message)" -Severity 2
+                
+                # In demo mode, log the error but continue with demo
+                if ($DemoMode -ne 'Off') {
+                    Write-Log -Message "DEMO MODE - Ignoring exemption error for demo purposes" -Severity 2
+                    return $false
+                }
+                
                 return $false
             }
         }
         
         function Get-SystemUptimeDays {
-            if ($DemoMode) {
+            if ($DemoMode -ne 'Off') {
                 Write-Log -Message "DEMO MODE - Simulating 8 days uptime" -Severity 1
                 return 8
             }
@@ -261,9 +293,30 @@ Try {
         }
         
         function Get-NextRebootDeadline {
-            if ($DemoMode) {
-                $deadline = (Get-Date).AddMinutes(60)
-                Write-Log -Message "DEMO MODE - Deadline set to 60 minutes from now: $($deadline.ToString('HH:mm:ss'))" -Severity 1
+            if ($DemoMode -ne 'Off') {
+                # Simulate different scenarios based on demo mode
+                switch ($DemoMode) {
+                    'Standard' {
+                        # Simulate 5 hours until deadline (300 minutes)
+                        $deadline = (Get-Date).AddMinutes(300)
+                        Write-Log -Message "DEMO MODE (Standard) - Deadline set to 5 hours from now: $($deadline.ToString('HH:mm:ss'))" -Severity 1
+                    }
+                    'Urgent' {
+                        # Simulate 45 minutes until deadline (within 90-minute window)
+                        $deadline = (Get-Date).AddMinutes(45)
+                        Write-Log -Message "DEMO MODE (Urgent) - Deadline set to 45 minutes from now: $($deadline.ToString('HH:mm:ss'))" -Severity 1
+                    }
+                    'Deadline' {
+                        # Simulate deadline reached (in maintenance window)
+                        $deadline = (Get-Date).AddMinutes(-5)
+                        Write-Log -Message "DEMO MODE (Deadline) - Deadline was 5 minutes ago, inside maintenance window" -Severity 1
+                    }
+                    'OutsideWindow' {
+                        # Simulate deadline reached but outside maintenance window
+                        $deadline = (Get-Date).AddMinutes(-5)
+                        Write-Log -Message "DEMO MODE (OutsideWindow) - Deadline was 5 minutes ago, outside maintenance window" -Severity 1
+                    }
+                }
                 return $deadline
             }
             
@@ -279,6 +332,18 @@ Try {
         }
         
         function Test-InRebootWindow {
+            # Override for OutsideWindow demo mode
+            if ($DemoMode -eq 'OutsideWindow') {
+                Write-Log -Message "DEMO MODE (OutsideWindow) - Simulating outside maintenance window" -Severity 1
+                return $false
+            }
+            
+            # Override for Deadline demo mode (simulate inside window)
+            if ($DemoMode -eq 'Deadline') {
+                Write-Log -Message "DEMO MODE (Deadline) - Simulating inside maintenance window" -Severity 1
+                return $true
+            }
+            
             $currentHour = (Get-Date).Hour
             return ($currentHour -ge $rebootHour -or $currentHour -lt $rebootWindowEnd)
         }
@@ -329,8 +394,8 @@ Try {
             # Final warning - show PSADT prompt with countdown and restart option
             Write-Log -Message "Final warning period - showing countdown prompt" -Severity 2
             
-            if ($DemoMode) {
-                # In demo mode, allow dismissing the urgent warning
+            if ($DemoMode -eq 'Urgent') {
+                # In urgent demo mode, allow dismissing the urgent warning
                 $promptResult = Show-InstallationPrompt `
                     -Title "URGENT: Restart Required Now" `
                     -Message "Your system must restart in $([Math]::Ceiling($minutesUntilDeadline)) minutes (at $($deadline.ToString('h:mm tt'))).`n`nSave all work immediately. Your computer will restart automatically if you do not take action." `
@@ -376,7 +441,7 @@ Try {
             $hoursSinceLastNotification = if ($state.LastNotificationTime) { ((Get-Date) - $state.LastNotificationTime).TotalHours } else { 999 }
             
             # Show notification every 4 hours (or always in demo mode)
-            if ($DemoMode -or $hoursSinceLastNotification -ge 4) {
+            if ($DemoMode -eq 'Standard' -or $hoursSinceLastNotification -ge 4) {
                 Write-Log -Message "Showing reboot notification" -Severity 1
                 
                 $hoursRemaining = [Math]::Round($minutesUntilDeadline / 60, 1)
